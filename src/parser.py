@@ -45,9 +45,11 @@ LogicNotExpr        ::= "not" LogicNotExpr
 
 RelExpr             ::= AddExpr ((">" | "<" | "==" | ">=" | "<=" | "/=") AddExpr)?
 
-AddExpr             ::= MulExpr ("+" | "-") AddExpr
+AddExpr             ::= MulExpr (("+" | "-") AddExpr)?
 
-MulExpr             ::= AppExpr (("*" | "/") MulExpr
+MulExpr             ::= FieldAccessExpr (("*" | "/") MulExpr)?
+
+FieldAccessExpr     ::= AppExpr ("." IDENT)*
 
 AppExpr             ::= TypeAnnotatedExpr AppExpr
 
@@ -441,13 +443,32 @@ class MulExpr(Expr):
     @classmethod
     def parse(cls, tokens: TokenStream):
         lineno = tokens.cur_line()
-        left = AppExpr.parse(tokens)
+        left = FieldAccessExpr.parse(tokens)
         if tokens.peek().type in (TokenType.MULT, TokenType.DIV):
             op = tokens.expect(TokenType.MULT, TokenType.DIV).value
             right = MulExpr.parse(tokens)
             return MulExpr(left, op, right, lineno=lineno)
         else:
             return left
+
+
+@dataclass
+class FieldAccessExpr(Expr):
+    record: Expr
+    field_names: list[str]
+
+    @classmethod
+    def parse(cls, tokens: TokenStream):
+        lineno = tokens.cur_line()
+        record = AppExpr.parse(tokens)
+        field_names = []
+        while tokens.peek().type == TokenType.DOT:
+            tokens.expect(TokenType.DOT)
+            field_names.append(tokens.expect(TokenType.IDENT).value)
+        if len(field_names) > 0:
+            return FieldAccessExpr(record, field_names, lineno=lineno)
+        else:
+            return record
 
 
 _named_expr_start = (

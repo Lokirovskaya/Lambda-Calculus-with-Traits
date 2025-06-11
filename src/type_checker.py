@@ -10,74 +10,6 @@ No TraitStmt, StructStmt, ImplStmt here
 """
 
 
-"""
-Program             ::= Statement*
-
-Statement           ::= AssignStmt
-                        | ExprStmt
-                        | ;
-
-AssignStmt          ::= IDENT "=" Expr ";"
-
-ExprStmt            ::= Expr ";"
-
-
-Expr                ::= LambdaExpr
-
-LambdaExpr          ::= "\\" IDENT ":" Type "." Expr
-                        | IfExpr
-
-IfExpr              ::= "if" Expr "then" Expr "else" Expr
-                        | LogicOrExpr
-
-LogicOrExpr         ::= LogicAndExpr "or" LogicOrExpr
-
-LogicAndExpr        ::= LogicNotExpr "and" LogicAndExpr
-
-LogicNotExpr        ::= "not" LogicNotExpr
-                        | RelExpr
-
-RelExpr             ::= AddExpr ((">" | "<" | "==" | ">=" | "<=" | "!=") AddExpr)?
-
-AddExpr             ::= MulExpr ("+" | "-") AddExpr
-
-MulExpr             ::= AppExpr (("*" | "/") MulExpr
-
-AppExpr             ::= TypeAnnotatedExpr AppExpr
-
-TypeAnnotatedExpr   ::= NamedExpr (":" Type)?
-
-NamedExpr           ::= "(" Expr ")"
-                        | IDENT
-                        | ValueExpr
-                        | ListExpr
-                        | RecordExpr
-
-ValueExpr           ::= "true" | "false" | INT | STRING
-
-ListExpr            ::= "[" Expr ("," Expr)* "]"
-
-RecordExpr          ::= "{" IDENT "=" Expr ("," Expr "=" Expr)* "}"
-
-                        
-
-Type                ::= ArrowType
-
-ArrowType           ::= AppType ("->" ArrowType)?
-
-AppType             ::= NamedType AppType
-
-NamedType            ::= "(" Type ")"
-                        | IDENT
-                        | ListType
-                        | RecordType
-
-ListType            ::= "[" Type "]"
-
-RecordType          ::= "{" IDENT ":" Type ("," IDENT ":" Type)* "}"
-
-"""
-
 BoolType = NamedType("Bool")
 IntType = NamedType("Int")
 StringType = NamedType("String")
@@ -178,6 +110,20 @@ class TypeCheckerVisitor(NodeVisitor):
             self._error(node, f"Expected 'Int', got '{left_type}' and '{right_type}'")
         return IntType
 
+    def visit_FieldAccessExpr(self, node: FieldAccessExpr):
+        record_type = self.visit(node.record)
+
+        if not isinstance(record_type, RecordType):
+            self._error(node, f"Expected record, got '{record_type}'")
+
+        for name in node.field_names:
+            if name not in record_type.fields:
+                self._error(node, f"Unknown field '{name}' in {record_type}")
+            record_type = record_type.fields[name]
+        
+        return record_type
+
+
     def visit_AppExpr(self, node: AppExpr):
         func_type = self.visit(node.func)
         arg_type = self.visit(node.arg)
@@ -213,11 +159,11 @@ class TypeCheckerVisitor(NodeVisitor):
             self._error(value, f"Unknown value type '{type(value)}'")
 
     def visit_ListExpr(self, node: ListExpr):
-        if len(node.values) == 0:
+        if len(node.elements) == 0:
             return ListType(None)  # Todo
 
-        first_type = self.visit(node.values[0])
-        for value in node.values[1:]:
+        first_type = self.visit(node.elements[0])
+        for value in node.elements[1:]:
             value_type = self.visit(value)
             if first_type != value_type:
                 self._error(value, f"Expected '{first_type}', got '{value_type}'")
@@ -225,5 +171,5 @@ class TypeCheckerVisitor(NodeVisitor):
         return ListType(first_type)
 
     def visit_RecordExpr(self, node: RecordExpr):
-        record_type = {label: self.visit(value) for label, value in node.fields}
+        record_type = RecordType({label: self.visit(value) for label, value in node.fields.items()})
         return record_type
