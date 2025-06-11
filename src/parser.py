@@ -86,14 +86,17 @@ RecordType          ::= "{" IDENT ":" Type ("," IDENT ":" Type)* "}"
 
 
 def parse(code: str):
-    return Program.parse(tokenize(code))
+    tree = Program.parse(tokenize(code))
+    with open("ast.txt", "w", encoding="utf-8") as f:
+        f.write(tree.pretty_print())
+    return tree
 
 
 @dataclass(kw_only=True)
 class ASTNode:
-    lineno: int
+    lineno: int = None
 
-    def pretty_printer(self, indent=0) -> str:
+    def pretty_print(self, indent=0) -> str:
         pad = "  " * indent
         cls_name = self.__class__.__name__
         result = f"{pad}{cls_name}"
@@ -109,7 +112,7 @@ class ASTNode:
 
     def _format_value(self, val, indent: int) -> str:
         if isinstance(val, ASTNode):
-            return "\n" + val._pretty(indent)
+            return "\n" + val.pretty_print(indent)
         elif isinstance(val, list):
             if not val:
                 return "[]"
@@ -117,7 +120,7 @@ class ASTNode:
                 "[\n"
                 + "\n".join(
                     (
-                        self._indent_line(v._pretty(indent + 1))
+                        self._indent_line(v.pretty_print(indent + 1))
                         if isinstance(v, ASTNode)
                         else self._indent_line(str(v), indent + 1)
                     )
@@ -372,7 +375,7 @@ class LogicAndExpr(Expr):
 
 @dataclass
 class LogicNotExpr(Expr):
-    term: Expr
+    expr: Expr
 
     @classmethod
     def parse(cls, tokens: TokenStream):
@@ -594,6 +597,13 @@ class ArrowType(Type):
         else:
             return left
 
+    def __str__(self):
+        left = str(self.left)
+        right = str(self.right)
+        if isinstance(self.left, ArrowType):
+            left = f"({left})"
+        return f"{left} -> {right}"
+
     def __eq__(self, other):
         return (
             isinstance(other, ArrowType) and self.left == other.left and self.right == other.right
@@ -622,6 +632,9 @@ class AppType(Type):
             return AppType(func, arg, lineno=lineno)
         else:
             return func
+
+    def __str__(self):
+        return f"{self.func} {self.arg}"
 
     def __eq__(self, other):
         return isinstance(other, AppType) and self.func == other.func and self.arg == other.arg
@@ -652,6 +665,9 @@ class NamedType(Type):
         else:
             tokens.expect(TokenType.IDENT, TokenType.LPAREN, TokenType.LBRACKET, TokenType.LBRACE)
 
+    def __str__(self):
+        return self.name
+
     def __eq__(self, other):
         return isinstance(other, NamedType) and self.name == other.name
 
@@ -670,6 +686,9 @@ class ListType(Type):
         elem_type = Type.parse(tokens)
         tokens.expect(TokenType.RBRACKET)
         return ListType(elem_type, lineno=lineno)
+
+    def __str__(self):
+        return f"[{self.elem_type}]"
 
     def __eq__(self, other):
         return isinstance(other, ListType) and self.elem_type == other.elem_type
@@ -702,6 +721,9 @@ class RecordType(Type):
     @property
     def sorted_fields(self):
         return sorted(self.fields.items())
+
+    def __str__(self):
+        return "{" + ", ".join(f"{name}: {type}" for name, type in self.sorted_fields) + "}"
 
     def __eq__(self, other):
         return isinstance(other, RecordType) and self.sorted_fields == other.sorted_fields
