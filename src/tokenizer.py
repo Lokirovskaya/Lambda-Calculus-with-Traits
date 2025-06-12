@@ -37,6 +37,7 @@ class TokenType(Enum):
     TRUE = auto()
     FALSE = auto()
     BACKSLASH = auto()
+    AT = auto()
     IF = auto()
     ELSE = auto()
     THEN = auto()
@@ -48,6 +49,7 @@ class TokenType(Enum):
     LET = auto()
     IN = auto()
     FOR = auto()
+    FORALL = auto()
     WHITESPACE = auto()
     MISMATCH = auto()
     EOF = auto()
@@ -88,6 +90,7 @@ token_spec = {
     TokenType.MULT: r"\*",
     TokenType.DIV: r"/",
     TokenType.BACKSLASH: r"\\",
+    TokenType.AT: r"@",
     TokenType.AND: r"and",
     TokenType.OR: r"or",
     TokenType.NOT: r"not",
@@ -103,6 +106,7 @@ token_spec = {
     TokenType.IMPL: r"impl",
     TokenType.LET: r"let",
     TokenType.IN: r"in",
+    TokenType.FORALL: r"forall",
     TokenType.FOR: r"for",
     TokenType.IDENT: r"[a-zA-Z_][a-zA-Z0-9_]*",
     TokenType.WHITESPACE: r"[ \t\r\n]+",

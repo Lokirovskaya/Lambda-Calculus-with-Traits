@@ -36,24 +36,34 @@ LambdaExpr          ::= "\\" IDENT ":" Type "." Expr
 IfExpr              ::= "if" Expr "then" Expr "else" Expr
                         | LogicOrExpr
 
-LogicOrExpr         ::= LogicAndExpr "or" LogicOrExpr
+LogicOrExpr         ::= LogicOrExpr "or" LogicAndExpr 
+                        | LogicAndExpr
 
-LogicAndExpr        ::= LogicNotExpr "and" LogicAndExpr
+LogicAndExpr        ::= LogicAndExpr "and" LogicNotExpr 
+                        | LogicNotExpr
 
 LogicNotExpr        ::= "not" LogicNotExpr
                         | RelExpr
 
-RelExpr             ::= AddExpr ((">" | "<" | "==" | ">=" | "<=" | "/=") AddExpr)?
+RelExpr             ::= RelExpr (">" | "<" | "==" | ">=" | "<=" | "/=") AddExpr
+                        | AddExpr
 
-AddExpr             ::= MulExpr (("+" | "-") AddExpr)?
+AddExpr             ::= AddExpr ("+" | "-") MulExpr
+                        | MulExpr
 
-MulExpr             ::= FieldAccessExpr (("*" | "/") MulExpr)?
+MulExpr             ::= MulExpr ("*" | "/") AppExpr
+                        | AppExpr
 
-FieldAccessExpr     ::= AppExpr ("." IDENT)*
+AppExpr             ::= AppExpr TypeAppExpr
+                        | TypeAppExpr
 
-AppExpr             ::= TypeAnnotatedExpr AppExpr
+TypeAppExpr         ::= TypeAppExpr "@" Type
+                        | TypeAnnotatedExpr
 
-TypeAnnotatedExpr   ::= NamedExpr (":" Type)?
+TypeAnnotatedExpr   ::= FieldAccessExpr (":" Type)?
+
+FieldAccessExpr     ::= FieldAccessExpr "." IDENT
+                        | NamedExpr
 
 NamedExpr           ::= "(" Expr ")"
                         | IDENT
@@ -69,13 +79,18 @@ RecordExpr          ::= "{" IDENT "=" Expr ("," Expr "=" Expr)* "}"
 
                         
 
-Type                ::= ArrowType
+Type                ::= ForAllType
 
-ArrowType           ::= AppType ("->" ArrowType)?
+ForAllType          ::= "forall" IDENT "." Type
+                        | ArrowType
 
-AppType             ::= NamedType AppType
+ArrowType           ::= AppType "->" ArrowType
+                        | AppType
 
-NamedType            ::= "(" Type ")"
+AppType             ::= AppType NamedType
+                        | NamedType
+
+NamedType           ::= "(" Type ")"
                         | IDENT
                         | ListType
                         | RecordType
@@ -350,12 +365,11 @@ class LogicOrExpr(Expr):
     def parse(cls, tokens: TokenStream):
         lineno = tokens.cur_line()
         left = LogicAndExpr.parse(tokens)
-        if tokens.peek().type == TokenType.OR:
+        while tokens.peek().type == TokenType.OR:
             tokens.expect(TokenType.OR)
-            right = LogicOrExpr.parse(tokens)
-            return LogicOrExpr(left, right, lineno=lineno)
-        else:
-            return left
+            right = LogicAndExpr.parse(tokens)
+            left = LogicOrExpr(left, right, lineno=lineno)
+        return left
 
 
 @dataclass
@@ -367,12 +381,11 @@ class LogicAndExpr(Expr):
     def parse(cls, tokens: TokenStream):
         lineno = tokens.cur_line()
         left = LogicNotExpr.parse(tokens)
-        if tokens.peek().type == TokenType.AND:
+        while tokens.peek().type == TokenType.AND:
             tokens.expect(TokenType.AND)
-            right = LogicAndExpr.parse(tokens)
-            return LogicAndExpr(left, right, lineno=lineno)
-        else:
-            return left
+            right = LogicNotExpr.parse(tokens)
+            left = LogicAndExpr(left, right, lineno=lineno)
+        return left
 
 
 @dataclass
@@ -408,12 +421,11 @@ class RelExpr(Expr):
             TokenType.NEQ,
         )
         left = AddExpr.parse(tokens)
-        if tokens.peek().type in ops:
+        while tokens.peek().type in ops:
             op = tokens.expect(*ops).value
             right = AddExpr.parse(tokens)
-            return RelExpr(left, op, right, lineno=lineno)
-        else:
-            return left
+            left = RelExpr(left, op, right, lineno=lineno)
+        return left
 
 
 @dataclass
@@ -425,13 +437,13 @@ class AddExpr(Expr):
     @classmethod
     def parse(cls, tokens: TokenStream):
         lineno = tokens.cur_line()
+        ops = (TokenType.ADD, TokenType.SUB)
         left = MulExpr.parse(tokens)
-        if tokens.peek().type in (TokenType.ADD, TokenType.SUB):
-            op = tokens.expect(TokenType.ADD, TokenType.SUB).value
-            right = AddExpr.parse(tokens)
-            return AddExpr(left, op, right, lineno=lineno)
-        else:
-            return left
+        while tokens.peek().type in ops:
+            op = tokens.expect(*ops).value
+            right = MulExpr.parse(tokens)
+            left = AddExpr(left, op, right, lineno=lineno)
+        return left
 
 
 @dataclass
@@ -443,44 +455,25 @@ class MulExpr(Expr):
     @classmethod
     def parse(cls, tokens: TokenStream):
         lineno = tokens.cur_line()
-        left = FieldAccessExpr.parse(tokens)
-        if tokens.peek().type in (TokenType.MULT, TokenType.DIV):
-            op = tokens.expect(TokenType.MULT, TokenType.DIV).value
-            right = MulExpr.parse(tokens)
-            return MulExpr(left, op, right, lineno=lineno)
-        else:
-            return left
+        ops = (TokenType.MULT, TokenType.DIV)
+        left = AppExpr.parse(tokens)
+        while tokens.peek().type in ops:
+            op = tokens.expect(*ops).value
+            right = AppExpr.parse(tokens)
+            left = MulExpr(left, op, right, lineno=lineno)
+        return left
 
 
-@dataclass
-class FieldAccessExpr(Expr):
-    record: Expr
-    field_names: list[str]
-
-    @classmethod
-    def parse(cls, tokens: TokenStream):
-        lineno = tokens.cur_line()
-        record = AppExpr.parse(tokens)
-        field_names = []
-        while tokens.peek().type == TokenType.DOT:
-            tokens.expect(TokenType.DOT)
-            field_names.append(tokens.expect(TokenType.IDENT).value)
-        if len(field_names) > 0:
-            return FieldAccessExpr(record, field_names, lineno=lineno)
-        else:
-            return record
-
-
-_named_expr_start = (
+_named_expr_start = {
     TokenType.IDENT,
     TokenType.NUMBER,
-    TokenType.LPAREN,
     TokenType.STRING,
-    TokenType.LBRACKET,
-    TokenType.LBRACE,
     TokenType.TRUE,
     TokenType.FALSE,
-)
+    TokenType.LPAREN,
+    TokenType.LBRACKET,
+    TokenType.LBRACE,
+}
 
 
 @dataclass
@@ -491,12 +484,27 @@ class AppExpr(Expr):
     @classmethod
     def parse(cls, tokens: TokenStream):
         lineno = tokens.cur_line()
+        func = TypeAppExpr.parse(tokens)
+        while tokens.peek().type in _named_expr_start:
+            arg = TypeAppExpr.parse(tokens)
+            func = AppExpr(func, arg, lineno=lineno)
+        return func
+
+
+@dataclass
+class TypeAppExpr(Expr):
+    func: Expr
+    type_arg: Type
+
+    @classmethod
+    def parse(cls, tokens: TokenStream):
+        lineno = tokens.cur_line()
         func = TypeAnnotatedExpr.parse(tokens)
-        if tokens.peek().type in _named_expr_start:
-            arg = AppExpr.parse(tokens)
-            return AppExpr(func, arg, lineno=lineno)
-        else:
-            return func
+        while tokens.peek().type == TokenType.AT:
+            tokens.expect(TokenType.AT)
+            type_arg = Type.parse(tokens)
+            func = TypeAppExpr(func, type_arg, lineno=lineno)
+        return func
 
 
 @dataclass
@@ -507,13 +515,29 @@ class TypeAnnotatedExpr(Expr):
     @classmethod
     def parse(cls, tokens: TokenStream):
         lineno = tokens.cur_line()
-        expr = NamedExpr.parse(tokens)
+        expr = FieldAccessExpr.parse(tokens)
         if tokens.peek().type == TokenType.COLON:
             tokens.expect(TokenType.COLON)
             type = Type.parse(tokens)
             return TypeAnnotatedExpr(expr, type, lineno=lineno)
         else:
             return expr
+
+
+@dataclass
+class FieldAccessExpr(Expr):
+    record: Expr
+    field_name: str
+
+    @classmethod
+    def parse(cls, tokens: TokenStream):
+        lineno = tokens.cur_line()
+        record = NamedExpr.parse(tokens)
+        while tokens.peek().type == TokenType.DOT:
+            tokens.expect(TokenType.DOT)
+            field_name = tokens.expect(TokenType.IDENT).value
+            record = FieldAccessExpr(record, field_name, lineno=lineno)
+        return record
 
 
 @dataclass
@@ -599,7 +623,25 @@ class RecordExpr(Expr):
 class Type(ASTNode):
     @classmethod
     def parse(cls, tokens: TokenStream):
-        return ArrowType.parse(tokens)
+        return ForAllType.parse(tokens)
+
+
+@dataclass
+class ForAllType(Type):
+    param_name: str
+    body: Type
+
+    @classmethod
+    def parse(cls, tokens: TokenStream):
+        lineno = tokens.cur_line()
+        if tokens.peek().type == TokenType.FORALL:
+            tokens.expect(TokenType.FORALL)
+            param_name = tokens.expect(TokenType.IDENT).value
+            tokens.expect(TokenType.DOT)
+            body = Type.parse(tokens)
+            return ForAllType(param_name, body, lineno=lineno)
+        else:
+            return ArrowType.parse(tokens)
 
 
 @dataclass
@@ -634,6 +676,14 @@ class ArrowType(Type):
         return hash((self.left, self.right))
 
 
+_named_type_start = {
+    TokenType.IDENT,
+    TokenType.LPAREN,
+    TokenType.LBRACKET,
+    TokenType.LBRACE,
+}
+
+
 @dataclass
 class AppType(Type):
     func: Type
@@ -643,19 +693,17 @@ class AppType(Type):
     def parse(cls, tokens: TokenStream):
         lineno = tokens.cur_line()
         func = NamedType.parse(tokens)
-        if tokens.peek().type in (
-            TokenType.LPAREN,
-            TokenType.IDENT,
-            TokenType.LBRACKET,
-            TokenType.LBRACE,
-        ):
-            arg = AppType.parse(tokens)
-            return AppType(func, arg, lineno=lineno)
-        else:
-            return func
+        while tokens.peek().type in _named_type_start:
+            arg = Type.parse(tokens)
+            func = AppType(func, arg, lineno=lineno)
+        return func
 
     def __str__(self):
-        return f"{self.func} {self.arg}"
+        func = str(self.func)
+        arg = str(self.arg)
+        if isinstance(self.arg, AppType):
+            arg = f"({arg})"
+        return f"{func} {arg}"
 
     def __eq__(self, other):
         return isinstance(other, AppType) and self.func == other.func and self.arg == other.arg

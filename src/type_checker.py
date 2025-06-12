@@ -116,10 +116,9 @@ class TypeCheckerVisitor(NodeVisitor):
         if not isinstance(record_type, RecordType):
             self._error(node, f"Expected record, got '{record_type}'")
 
-        for name in node.field_names:
-            if name not in record_type.fields:
-                self._error(node, f"Unknown field '{name}' in {record_type}")
-            record_type = record_type.fields[name]
+        if node.field_name not in record_type.fields:
+            self._error(node, f"Unknown field '{node.field_name}' in {record_type}")
+        record_type = record_type.fields[node.field_name]
         
         return record_type
 
