@@ -706,7 +706,7 @@ class ArrowType(Type):
         right = str(self.right)
         if isinstance(self.left, (ArrowType, ForAllType)):
             left = f"({left})"
-        if isinstance(self.right, ArrowType):
+        if isinstance(self.right, ForAllType):
             right = f"({right})"
         return f"{left} -> {right}"
 

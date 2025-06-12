@@ -63,7 +63,7 @@ class Token:
     column: int
 
 
-token_spec = {
+_token_spec = {
     TokenType.NUMBER: r"\d+(\.\d+)?",
     TokenType.STRING: r'"[^"\n]*"|\'[^\'\n]*\'',
     TokenType.COMMENT: r"//[^\n]*",
@@ -91,31 +91,34 @@ token_spec = {
     TokenType.DIV: r"/",
     TokenType.BACKSLASH: r"\\",
     TokenType.AT: r"@",
-    TokenType.AND: r"and",
-    TokenType.OR: r"or",
-    TokenType.NOT: r"not",
-    TokenType.TRUE: r"true",
-    TokenType.FALSE: r"false",
-    TokenType.IF: r"if",
-    TokenType.ELSE: r"else",
-    TokenType.THEN: r"then",
-    TokenType.WHERE: r"where",
-    TokenType.END: r"end",
-    TokenType.TRAIT: r"trait",
-    TokenType.STRUCT: r"struct",
-    TokenType.IMPL: r"impl",
-    TokenType.LET: r"let",
-    TokenType.IN: r"in",
-    TokenType.FORALL: r"forall",
-    TokenType.FOR: r"for",
     TokenType.IDENT: r"[a-zA-Z_][a-zA-Z0-9_]*",
     TokenType.WHITESPACE: r"[ \t\r\n]+",
     TokenType.MISMATCH: r".",
 }
 
 # 合成正则表达式
-token_regex = "|".join(f"(?P<{tok.name}>{pattern})" for tok, pattern in token_spec.items())
-master_pattern = re.compile(token_regex)
+_token_regex = "|".join(f"(?P<{tok.name}>{pattern})" for tok, pattern in _token_spec.items())
+_master_pattern = re.compile(_token_regex)
+
+_key_words = {
+    "and" : TokenType.AND,
+    "or" : TokenType.OR,
+    "not" : TokenType.NOT,
+    "true" : TokenType.TRUE,
+    "false" : TokenType.FALSE,
+    "if" : TokenType.IF,
+    "else" : TokenType.ELSE,
+    "then" : TokenType.THEN,
+    "where" : TokenType.WHERE,
+    "end" : TokenType.END,
+    "trait" : TokenType.TRAIT,
+    "struct" : TokenType.STRUCT,
+    "impl" : TokenType.IMPL,
+    "let" : TokenType.LET,
+    "in" : TokenType.IN,
+    "for" : TokenType.FOR,
+    "forall" : TokenType.FORALL,
+}
 
 
 class TokenStream:
@@ -125,7 +128,9 @@ class TokenStream:
         if len(tokens) == 0:
             self.eof_token = Token(TokenType.EOF, "EOF", 0, 0)
         else:
-            self.eof_token = Token(TokenType.EOF, "EOF", tokens[-1].line, tokens[-1].column + len(tokens[-1].value))
+            self.eof_token = Token(
+                TokenType.EOF, "EOF", tokens[-1].line, tokens[-1].column + len(tokens[-1].value)
+            )
 
     def eof(self):
         return self.pos >= len(self.tokens)
@@ -134,7 +139,7 @@ class TokenStream:
         if self.eof():
             return self.eof_token
         return self.tokens[self.pos]
-    
+
     def peek_forward(self, n):
         if self.pos + n >= len(self.tokens) or self.pos + n < 0:
             return self.eof_token
@@ -182,7 +187,7 @@ class TokenStream:
             raise SyntaxError(f"[Line {tok.line}] {msg}")
         else:
             raise SyntaxError(f"[End of Input] {msg}")
-        
+
     def cur_line(self):
         return self.peek().line
 
@@ -192,7 +197,7 @@ def tokenize(code: str) -> TokenStream:
     line_num = 1
     line_start = 0
 
-    for mo in master_pattern.finditer(code):
+    for mo in _master_pattern.finditer(code):
         kind = mo.lastgroup
         value = mo.group()
         column = mo.start() - line_start + 1  # 从1开始算列
@@ -209,8 +214,8 @@ def tokenize(code: str) -> TokenStream:
         elif token_type == TokenType.MISMATCH:
             raise SyntaxError(f"Unexpected character {value!r} at line {line_num} column {column}")
         else:
+            if value in _key_words:
+                token_type = _key_words[value]
             tokens.append(Token(token_type, value, line_num, column))
 
     return TokenStream(tokens)
-
-
