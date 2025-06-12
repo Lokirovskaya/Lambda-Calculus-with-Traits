@@ -24,7 +24,7 @@ class TypeCheckerVisitor(NodeVisitor):
         self.stmt_type_info = []  # [(lineno, info)]
 
     def _error(self, node: ASTNode, msg: str) -> NoReturn:
-        raise TypeError(f"[Line {node.lineno}, Node {node.__class__.__name__}] {msg}")
+        raise TypeError(f"[Line {node.lineno}] {msg}")
 
     def _log(self, node: ASTNode, msg: str):
         self.stmt_type_info.append((node.lineno, msg))
@@ -169,7 +169,7 @@ class TypeCheckerVisitor(NodeVisitor):
         try:
             type = self.cur_env.get(node.name)
             if type == TypeType:
-                self._error(node, f"Identifier '{node.name}' is a type, not variable")
+                self._error(node, f"Identifier '{node.name}' is a type, not a variable")
             return type
         except NameError as e:
             self._error(node, e)
