@@ -1,3 +1,4 @@
 *.txt
 *.ast
+*.rs
 __pycache__/

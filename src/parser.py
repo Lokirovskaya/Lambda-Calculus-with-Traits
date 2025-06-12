@@ -31,6 +31,9 @@ AssignItem          ::= IDENT "=" Expr ";"
 Expr                ::= LambdaExpr
 
 LambdaExpr          ::= "\\" IDENT ":" Type "." Expr
+                        | TypeLambdaExpr
+
+TypeLambdaExpr      ::= "\\" IDENT "." Expr
                         | IfExpr
 
 IfExpr              ::= "if" Expr "then" Expr "else" Expr
@@ -84,10 +87,7 @@ Type                ::= ForAllType
 ForAllType          ::= "forall" IDENT "." Type
                         | ArrowType
 
-ArrowType           ::= AppType "->" ArrowType
-                        | AppType
-
-AppType             ::= AppType NamedType
+ArrowType           ::= NamedType "->" ArrowType
                         | NamedType
 
 NamedType           ::= "(" Type ")"
@@ -323,7 +323,10 @@ class LambdaExpr(Expr):
     @classmethod
     def parse(cls, tokens: TokenStream):
         lineno = tokens.cur_line()
-        if tokens.peek().type == TokenType.BACKSLASH:
+        if (
+            tokens.peek().type == TokenType.BACKSLASH
+            and tokens.peek_forward(2).type == TokenType.COLON
+        ):
             tokens.expect(TokenType.BACKSLASH)
             param_name = tokens.expect(TokenType.IDENT).value
             tokens.expect(TokenType.COLON)
@@ -331,6 +334,27 @@ class LambdaExpr(Expr):
             tokens.expect(TokenType.DOT)
             body = Expr.parse(tokens)
             return LambdaExpr(param_name, param_type, body, lineno=lineno)
+        else:
+            return TypeLambdaExpr.parse(tokens)
+
+
+@dataclass
+class TypeLambdaExpr(Stmt):
+    param_name: str
+    body: Expr
+
+    @classmethod
+    def parse(cls, tokens: TokenStream):
+        lineno = tokens.cur_line()
+        if (
+            tokens.peek().type == TokenType.BACKSLASH
+            and tokens.peek_forward(2).type == TokenType.DOT
+        ):
+            tokens.expect(TokenType.BACKSLASH)
+            param_name = tokens.expect(TokenType.IDENT).value
+            tokens.expect(TokenType.DOT)
+            body = Expr.parse(tokens)
+            return TypeLambdaExpr(param_name, body, lineno=lineno)
         else:
             return IfExpr.parse(tokens)
 
@@ -550,29 +574,31 @@ class NamedExpr(Expr):
         if tokens.peek().type == TokenType.IDENT:
             value = tokens.expect(TokenType.IDENT).value
             return NamedExpr(value, lineno=lineno)
+
         elif tokens.peek().type == TokenType.NUMBER:
             value = int(tokens.expect(TokenType.NUMBER).value)
             return ValueExpr(value, lineno=lineno)
-        elif tokens.peek().type == TokenType.LPAREN:
-            tokens.expect(TokenType.LPAREN)
-            expr = Expr.parse(tokens)
-            tokens.expect(TokenType.RPAREN)
-            return expr
         elif tokens.peek().type == TokenType.STRING:
             value = tokens.expect(TokenType.STRING).value
             return ValueExpr(value, lineno=lineno)
-        elif tokens.peek().type == TokenType.LBRACKET:
-            return ListExpr.parse(tokens)
-        elif tokens.peek().type == TokenType.LBRACE:
-            return RecordExpr.parse(tokens)
         elif tokens.peek().type == TokenType.TRUE:
             tokens.expect(TokenType.TRUE)
             return ValueExpr(True, lineno=lineno)
         elif tokens.peek().type == TokenType.FALSE:
             tokens.expect(TokenType.FALSE)
             return ValueExpr(False, lineno=lineno)
+
+        elif tokens.peek().type == TokenType.LPAREN:
+            tokens.expect(TokenType.LPAREN)
+            expr = Expr.parse(tokens)
+            tokens.expect(TokenType.RPAREN)
+            return expr
+        elif tokens.peek().type == TokenType.LBRACKET:
+            return ListExpr.parse(tokens)
+        elif tokens.peek().type == TokenType.LBRACE:
+            return RecordExpr.parse(tokens)
         else:
-            tokens.expect(_named_expr_start)
+            tokens.expect(*_named_expr_start)
 
 
 @dataclass
@@ -643,6 +669,21 @@ class ForAllType(Type):
         else:
             return ArrowType.parse(tokens)
 
+    def __str__(self):
+        param_name = self.param_name
+        body = str(self.body)
+        return f"forall {param_name}. {body}"
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, ForAllType)
+            and self.param_name == other.param_name
+            and self.body == other.body
+        )
+
+    def __hash__(self):
+        return hash((self.param_name, self.body))
+
 
 @dataclass
 class ArrowType(Type):
@@ -652,7 +693,7 @@ class ArrowType(Type):
     @classmethod
     def parse(cls, tokens: TokenStream):
         lineno = tokens.cur_line()
-        left = AppType.parse(tokens)
+        left = NamedType.parse(tokens)
         if tokens.peek().type == TokenType.ARROW:
             tokens.expect(TokenType.ARROW)
             right = ArrowType.parse(tokens)
@@ -663,8 +704,10 @@ class ArrowType(Type):
     def __str__(self):
         left = str(self.left)
         right = str(self.right)
-        if isinstance(self.left, ArrowType):
+        if isinstance(self.left, (ArrowType, ForAllType)):
             left = f"({left})"
+        if isinstance(self.right, ArrowType):
+            right = f"({right})"
         return f"{left} -> {right}"
 
     def __eq__(self, other):
@@ -674,42 +717,6 @@ class ArrowType(Type):
 
     def __hash__(self):
         return hash((self.left, self.right))
-
-
-_named_type_start = {
-    TokenType.IDENT,
-    TokenType.LPAREN,
-    TokenType.LBRACKET,
-    TokenType.LBRACE,
-}
-
-
-@dataclass
-class AppType(Type):
-    func: Type
-    arg: Type
-
-    @classmethod
-    def parse(cls, tokens: TokenStream):
-        lineno = tokens.cur_line()
-        func = NamedType.parse(tokens)
-        while tokens.peek().type in _named_type_start:
-            arg = Type.parse(tokens)
-            func = AppType(func, arg, lineno=lineno)
-        return func
-
-    def __str__(self):
-        func = str(self.func)
-        arg = str(self.arg)
-        if isinstance(self.arg, AppType):
-            arg = f"({arg})"
-        return f"{func} {arg}"
-
-    def __eq__(self, other):
-        return isinstance(other, AppType) and self.func == other.func and self.arg == other.arg
-
-    def __hash__(self):
-        return hash((self.func, self.arg))
 
 
 @dataclass
