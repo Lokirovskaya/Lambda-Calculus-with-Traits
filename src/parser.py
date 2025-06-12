@@ -57,10 +57,7 @@ AddExpr             ::= AddExpr ("+" | "-") MulExpr
 MulExpr             ::= MulExpr ("*" | "/") AppExpr
                         | AppExpr
 
-AppExpr             ::= AppExpr TypeAppExpr
-                        | TypeAppExpr
-
-TypeAppExpr         ::= TypeAppExpr "@" Type
+AppExpr|TypeAppExpr ::= AppExpr (TypeAnnotatedExpr | '@' Type)
                         | TypeAnnotatedExpr
 
 TypeAnnotatedExpr   ::= FieldAccessExpr (":" Type)?
@@ -508,10 +505,17 @@ class AppExpr(Expr):
     @classmethod
     def parse(cls, tokens: TokenStream):
         lineno = tokens.cur_line()
-        func = TypeAppExpr.parse(tokens)
-        while tokens.peek().type in _named_expr_start:
-            arg = TypeAppExpr.parse(tokens)
-            func = AppExpr(func, arg, lineno=lineno)
+        func = TypeAnnotatedExpr.parse(tokens)
+        while True:
+            if tokens.peek().type in _named_expr_start:
+                arg = TypeAnnotatedExpr.parse(tokens)
+                func = AppExpr(func, arg, lineno=lineno)
+            elif tokens.peek().type == TokenType.AT:
+                tokens.expect(TokenType.AT)
+                type_arg = Type.parse(tokens)
+                func = TypeAppExpr(func, type_arg, lineno=lineno)
+            else:
+                break
         return func
 
 
@@ -519,16 +523,6 @@ class AppExpr(Expr):
 class TypeAppExpr(Expr):
     func: Expr
     type_arg: Type
-
-    @classmethod
-    def parse(cls, tokens: TokenStream):
-        lineno = tokens.cur_line()
-        func = TypeAnnotatedExpr.parse(tokens)
-        while tokens.peek().type == TokenType.AT:
-            tokens.expect(TokenType.AT)
-            type_arg = Type.parse(tokens)
-            func = TypeAppExpr(func, type_arg, lineno=lineno)
-        return func
 
 
 @dataclass
