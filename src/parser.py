@@ -1,6 +1,8 @@
 from __future__ import annotations
 from dataclasses import dataclass, fields, is_dataclass
 from .tokenizer import tokenize, TokenType, TokenStream
+from typing import ClassVar
+
 
 """
 Program             ::= Statement*
@@ -313,12 +315,23 @@ class Expr(ASTNode):
     def parse(cls, tokens: TokenStream):
         return LambdaExpr.parse(tokens)
 
+    def wrap(self, arg: Expr) -> str:
+        assert isinstance(arg, Expr), f"Expected Expr, got {type(arg)}"
+        arg_prec = type(arg).precedence
+        self_prec = type(self).precedence
+        s = str(arg)
+        if arg_prec < self_prec:
+            return f"({s})"
+        else:
+            return str(s)
+
 
 @dataclass
 class LambdaExpr(Expr):
     param_name: str
     param_type: Type
     body: Expr
+    precedence: ClassVar[int] = 0
 
     @classmethod
     def parse(cls, tokens: TokenStream):
@@ -337,11 +350,18 @@ class LambdaExpr(Expr):
         else:
             return TypeLambdaExpr.parse(tokens)
 
+    def __str__(self):
+        if self.param_type is None:  # Erased type
+            return f"\\{self.param_name}: *. {self.body}"
+        else:
+            return f"\\{self.param_name}: {self.param_type}. {self.body}"
+
 
 @dataclass
 class TypeLambdaExpr(Stmt):
     param_name: str
     body: Expr
+    precedence: ClassVar[int] = 0
 
     @classmethod
     def parse(cls, tokens: TokenStream):
@@ -358,12 +378,16 @@ class TypeLambdaExpr(Stmt):
         else:
             return IfExpr.parse(tokens)
 
+    def __str__(self):
+        return f"\\{self.param_name}. {self.body}"
+
 
 @dataclass
 class IfExpr(Expr):
     condition: Expr
     then_expr: Expr
     else_expr: Expr
+    precedence: ClassVar[int] = 1
 
     @classmethod
     def parse(cls, tokens: TokenStream):
@@ -379,11 +403,15 @@ class IfExpr(Expr):
         else:
             return LogicOrExpr.parse(tokens)
 
+    def __str__(self):
+        return f"if {self.wrap(self.condition)} then {self.wrap(self.then_expr)} else {self.wrap(self.else_expr)}"
+
 
 @dataclass
 class LogicOrExpr(Expr):
     left: Expr
     right: Expr
+    precedence: ClassVar[int] = 2
 
     @classmethod
     def parse(cls, tokens: TokenStream):
@@ -395,11 +423,15 @@ class LogicOrExpr(Expr):
             left = LogicOrExpr(left, right, lineno=lineno)
         return left
 
+    def __str__(self):
+        return f"{self.wrap(self.left)} or {self.wrap(self.right)}"
+
 
 @dataclass
 class LogicAndExpr(Expr):
     left: Expr
     right: Expr
+    precedence: ClassVar[int] = 3
 
     @classmethod
     def parse(cls, tokens: TokenStream):
@@ -411,10 +443,14 @@ class LogicAndExpr(Expr):
             left = LogicAndExpr(left, right, lineno=lineno)
         return left
 
+    def __str__(self):
+        return f"{self.wrap(self.left)} and {self.wrap(self.right)}"
+
 
 @dataclass
 class LogicNotExpr(Expr):
     expr: Expr
+    precedence: ClassVar[int] = 4
 
     @classmethod
     def parse(cls, tokens: TokenStream):
@@ -426,12 +462,16 @@ class LogicNotExpr(Expr):
         else:
             return RelExpr.parse(tokens)
 
+    def __str__(self):
+        return f"not {self.wrap(self.expr)}"
+
 
 @dataclass
 class RelExpr(Expr):
     left: Expr
     op: str
     right: Expr
+    precedence: ClassVar[int] = 5
 
     @classmethod
     def parse(cls, tokens: TokenStream):
@@ -451,12 +491,16 @@ class RelExpr(Expr):
             left = RelExpr(left, op, right, lineno=lineno)
         return left
 
+    def __str__(self):
+        return f"{self.wrap(self.left)} {self.op} {self.wrap(self.right)}"
+
 
 @dataclass
 class AddExpr(Expr):
     left: Expr
     op: str
     right: Expr
+    precedence: ClassVar[int] = 6
 
     @classmethod
     def parse(cls, tokens: TokenStream):
@@ -469,12 +513,16 @@ class AddExpr(Expr):
             left = AddExpr(left, op, right, lineno=lineno)
         return left
 
+    def __str__(self):
+        return f"{self.wrap(self.left)} {self.op} {self.wrap(self.right)}"
+
 
 @dataclass
 class MulExpr(Expr):
     left: Expr
     op: str
     right: Expr
+    precedence: ClassVar[int] = 7
 
     @classmethod
     def parse(cls, tokens: TokenStream):
@@ -487,10 +535,14 @@ class MulExpr(Expr):
             left = MulExpr(left, op, right, lineno=lineno)
         return left
 
+    def __str__(self):
+        return f"{self.wrap(self.left)} {self.op} {self.wrap(self.right)}"
+
 
 @dataclass
 class NegExpr(Expr):
     expr: Expr
+    precedence: ClassVar[int] = 8
 
     @classmethod
     def parse(cls, tokens: TokenStream):
@@ -501,6 +553,9 @@ class NegExpr(Expr):
             return NegExpr(expr, lineno=lineno)
         else:
             return AppExpr.parse(tokens)
+
+    def __str__(self):
+        return f"-{self.wrap(self.expr)}"
 
 
 _named_expr_start = {
@@ -519,6 +574,7 @@ _named_expr_start = {
 class AppExpr(Expr):
     func: Expr
     arg: Expr
+    precedence: ClassVar[int] = 9
 
     @classmethod
     def parse(cls, tokens: TokenStream):
@@ -536,17 +592,25 @@ class AppExpr(Expr):
                 break
         return func
 
+    def __str__(self):
+        return f"{self.wrap(self.func)} {self.wrap(self.arg)}"
+
 
 @dataclass
 class TypeAppExpr(Expr):
     func: Expr
     type_arg: Type
+    precedence: ClassVar[int] = 9
+
+    def __str__(self):
+        return f"{self.wrap(self.func)} @{self.type_arg}"
 
 
 @dataclass
 class TypeAnnotatedExpr(Expr):
     expr: Expr
     type: Type
+    precedence: ClassVar[int] = 9
 
     @classmethod
     def parse(cls, tokens: TokenStream):
@@ -559,11 +623,15 @@ class TypeAnnotatedExpr(Expr):
         else:
             return expr
 
+    def __str__(self):
+        return f"{self.wrap(self.expr)}: {self.type}"
+
 
 @dataclass
 class FieldAccessExpr(Expr):
     record: Expr
     field_name: str
+    precedence: ClassVar[int] = 10
 
     @classmethod
     def parse(cls, tokens: TokenStream):
@@ -575,10 +643,14 @@ class FieldAccessExpr(Expr):
             record = FieldAccessExpr(record, field_name, lineno=lineno)
         return record
 
+    def __str__(self):
+        return f"{self.wrap(self.record)}.{self.field_name}"
+
 
 @dataclass
 class NamedExpr(Expr):
     name: str
+    precedence: ClassVar[int] = 11
 
     @classmethod
     def parse(cls, tokens: TokenStream):
@@ -612,15 +684,23 @@ class NamedExpr(Expr):
         else:
             tokens.expect(*_named_expr_start)
 
+    def __str__(self):
+        return self.name
+
 
 @dataclass
 class ValueExpr(Expr):
     value: str | int | bool
+    precedence: ClassVar[int] = 11
+
+    def __str__(self):
+        return repr(self.value)
 
 
 @dataclass
 class ListExpr(Expr):
     elements: list[Expr]
+    precedence: ClassVar[int] = 11
 
     @classmethod
     def parse(cls, tokens: TokenStream):
@@ -634,10 +714,14 @@ class ListExpr(Expr):
         tokens.expect(TokenType.RBRACKET)
         return ListExpr(elements, lineno=lineno)
 
+    def __str__(self):
+        return f"[{', '.join(map(str, self.elements))}]"
+
 
 @dataclass
 class RecordExpr(Expr):
     fields: dict[str, Expr]
+    precedence: ClassVar[int] = 11
 
     @classmethod
     def parse(cls, tokens: TokenStream):
@@ -647,7 +731,7 @@ class RecordExpr(Expr):
         while tokens.peek().type != TokenType.RBRACE:
             field_name = tokens.expect(TokenType.IDENT).value
             if field_name in fields:
-                raise tokens.error(tokens.peek_forward(-1), f"Duplicate field name: {field_name}")
+                tokens.error(tokens.peek_forward(-1), f"Duplicate field name: {field_name}")
             tokens.expect(TokenType.ASSIGN)
             field_value = Expr.parse(tokens)
             fields[field_name] = field_value
@@ -655,6 +739,9 @@ class RecordExpr(Expr):
                 tokens.expect(TokenType.COMMA)
         tokens.expect(TokenType.RBRACE)
         return RecordExpr(fields, lineno=lineno)
+
+    def __str__(self):
+        return f"{{{', '.join(f'{name} = {value}' for name, value in self.fields.items())}}}"
 
 
 @dataclass
@@ -797,7 +884,7 @@ class RecordType(Type):
         while tokens.peek().type != TokenType.RBRACE:
             field_name = tokens.expect(TokenType.IDENT).value
             if field_name in fields:
-                raise tokens.error(tokens.peek_forward(-1), f"Duplicate field name: {field_name}")
+                tokens.error(tokens.peek_forward(-1), f"Duplicate field name: {field_name}")
             tokens.expect(TokenType.COLON)
             field_type = Type.parse(tokens)
             fields[field_name] = field_type
