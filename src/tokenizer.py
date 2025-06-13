@@ -184,9 +184,9 @@ class TokenStream:
 
     def error(self, tok, msg):
         if tok:
-            raise SyntaxError(f"[Line {tok.line}] {msg}")
+            raise SyntaxError(f"[Line {tok.line}] Syntax Error: {msg}")
         else:
-            raise SyntaxError(f"[End of Input] {msg}")
+            raise SyntaxError(f"[End of Input] Syntax Error: {msg}")
 
     def cur_line(self):
         return self.peek().line
@@ -212,7 +212,7 @@ def tokenize(code: str) -> TokenStream:
         if token_type in {TokenType.WHITESPACE, TokenType.COMMENT}:
             continue
         elif token_type == TokenType.MISMATCH:
-            raise SyntaxError(f"Unexpected character {value!r} at line {line_num} column {column}")
+            raise SyntaxError(f"[Line {line_num}] Syntax Error: Unexpected character {value!r}")
         else:
             if value in _key_words:
                 token_type = _key_words[value]

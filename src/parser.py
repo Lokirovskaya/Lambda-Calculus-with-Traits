@@ -694,7 +694,7 @@ class ValueExpr(Expr):
     precedence: ClassVar[int] = 11
 
     def __str__(self):
-        return repr(self.value)
+        return str(self.value)
 
 
 @dataclass

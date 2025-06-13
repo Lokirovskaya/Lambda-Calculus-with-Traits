@@ -3,17 +3,12 @@ from typing import NoReturn
 from .parser import *
 from .visitor import NodeVisitor
 from .env import Env
+from .builtin import BoolType, IntType, StringType, TypeType
 
 
 """
 No TraitStmt, StructStmt, ImplStmt here
 """
-
-
-BoolType = NamedType("Bool")
-IntType = NamedType("Int")
-StringType = NamedType("String")
-TypeType = "*"
 
 
 class TypeCheckerVisitor(NodeVisitor):
@@ -24,7 +19,7 @@ class TypeCheckerVisitor(NodeVisitor):
         self.stmt_type_info = []  # [(lineno, info)]
 
     def _error(self, node: ASTNode, msg: str) -> NoReturn:
-        raise TypeError(f"[Line {node.lineno}] {msg}")
+        raise TypeError(f"[Line {node.lineno}] Type Error: {msg}")
 
     def _log(self, node: ASTNode, msg: str):
         self.stmt_type_info.append((node.lineno, msg))
@@ -129,7 +124,7 @@ class TypeCheckerVisitor(NodeVisitor):
         if left_type != IntType or right_type != IntType:
             self._error(node, f"Expected 'Int', got '{left_type}' and '{right_type}'")
         return IntType
-    
+
     def visit_NegExpr(self, node: NegExpr):
         expr_type = self.visit(node.expr)
         if expr_type != IntType:
