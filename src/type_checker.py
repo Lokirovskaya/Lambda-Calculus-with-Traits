@@ -1,7 +1,7 @@
 from typing import NoReturn
 
 from .parser import *
-from .visitor import NodeVisitor
+from .visitor import NodeVisitor, TransformVisitor
 from .env import Env
 from .builtin import BoolType, IntType, StringType, TypeType
 
@@ -160,7 +160,10 @@ class TypeCheckerVisitor(NodeVisitor):
         if not isinstance(forall_type, ForAllType):
             self._error(node, f"ForAll type expected, got '{forall_type}'")
 
-        return _type_substitution(forall_type.body, NamedType(forall_type.param_name), type_arg)
+        return _TypeSubstitutionVisitor(
+            old=NamedType(forall_type.param_name),
+            new=type_arg,
+        ).visit(forall_type.body)
 
     def visit_TypeAnnotatedExpr(self, node: TypeAnnotatedExpr):
         expr_type = self.visit(node.expr)
@@ -205,59 +208,6 @@ class TypeCheckerVisitor(NodeVisitor):
         return record_type
 
 
-def _type_substitution(type: Type, old: NamedType, new: Type) -> Type:
-    assert isinstance(old, NamedType)
-
-    if old == new:
-        return type
-
-    if type == old:
-        return new
-    elif isinstance(type, NamedType):
-        return type
-
-    elif isinstance(type, ArrowType):
-        return ArrowType(
-            _type_substitution(type.left, old, new), _type_substitution(type.right, old, new)
-        )
-    elif isinstance(type, ListType):
-        return ListType(_type_substitution(type.elem_type, old, new))
-    elif isinstance(type, RecordType):
-        return RecordType(
-            {label: _type_substitution(value, old, new) for label, value in type.fields.items()}
-        )
-
-    elif isinstance(type, ForAllType):
-        if type.param_name == old.name:
-            return type
-        elif type.param_name not in _free_type_vars(new):
-            return ForAllType(type.param_name, _type_substitution(type.body, old, new))
-        else:
-            temp_name = _new_temp_name(type.param_name)
-            result_body = _type_substitution(type.body, type.param_name, temp_name)
-            result_body = _type_substitution(result_body, old, new)
-            return ForAllType(temp_name, result_body)
-
-    else:
-        raise ValueError(f"Unknown type substitution for {type}")
-
-
-def _free_type_vars(type: Type) -> set[Type]:
-    if isinstance(type, NamedType):
-        return {type}
-    elif isinstance(type, ArrowType):
-        return _free_type_vars(type.left) | _free_type_vars(type.right)
-    elif isinstance(type, ListType):
-        return _free_type_vars(type.elem_type)
-    elif isinstance(type, RecordType):
-        result = set()
-        for field_type in type.fields.values():
-            result |= _free_type_vars(field_type)
-        return result
-    elif isinstance(type, ForAllType):
-        return _free_type_vars(type.body) - {NamedType(type.param_name)}
-
-
 _temp_name_idx = 0
 
 
@@ -265,3 +215,54 @@ def _new_temp_name(name: str) -> str:
     global _temp_name_idx
     _temp_name_idx += 1
     return f"{name}${_temp_name_idx}"
+
+
+class _TypeSubstitutionVisitor(TransformVisitor):
+    def __init__(self, old: NamedType, new: Type):
+        assert isinstance(old, NamedType)
+        self.old = old
+        self.new = new
+
+    def visit_ForAllType(self, node: ForAllType):
+        """
+        (λx. E)[x := N] = λx. E
+        (λy. E)[x := N] = λy. E[x := N]  if y ∉ FV(N)
+        (λy. E)[x := N] = λz. E[y := z][x := N]
+        """
+        if node.param_name == self.old.name:
+            return node
+        elif node.param_name not in _FreeVarVisitor().visit(self.new):
+            return ForAllType(node.param_name, self.visit(node.body))
+        else:
+            temp_name = _new_temp_name(node.param_name)
+            result_body = _TypeSubstitutionVisitor(
+                NamedType(node.param_name), NamedType(temp_name)
+            ).visit(node.body)
+            result_body = self.visit(result_body)
+            return ForAllType(temp_name, result_body)
+        
+    def visit_NamedType(self, node: NamedType):
+        if node.name == self.old.name:
+            return self.new
+        else:
+            return node
+
+
+class _FreeVarVisitor(NodeVisitor):
+    def __init__(self):
+        super().__init__()
+        self.bound_var_names = []
+        self.free_vars = set()
+
+    def visit(self, node: ASTNode):
+        super().visit(node)
+        return self.free_vars
+
+    def visit_ForAllType(self, node: ForAllType):
+        self.bound_var_names.append(node.param_name)
+        self.visit(node.body)
+        self.bound_var_names.pop()
+
+    def visit_NamedType(self, node: NamedType):
+        if node.name not in self.bound_var_names:
+            self.free_vars.add(node.name)

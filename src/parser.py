@@ -352,7 +352,7 @@ class LambdaExpr(Expr):
 
     def __str__(self):
         if self.param_type is None:  # Erased type
-            return f"\\{self.param_name}: *. {self.body}"
+            return f"\\{self.param_name}: _. {self.body}"
         else:
             return f"\\{self.param_name}: {self.param_type}. {self.body}"
 
