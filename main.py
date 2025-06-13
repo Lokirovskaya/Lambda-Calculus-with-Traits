@@ -10,6 +10,8 @@ def error(msg):
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         error("No file provided")
+    debug = "--debug" in sys.argv[1:]
+
 
     code_file = sys.argv[1]
 
@@ -23,4 +25,7 @@ if __name__ == "__main__":
         type_checker.print_type_info(code)
 
     except Exception as e:
-        error(e)
+        if debug:
+            raise e
+        else:
+            error(e)

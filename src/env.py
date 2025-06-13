@@ -1,12 +1,9 @@
-from .parser import Type
-
-
 class Env:
     def __init__(self, outer=None):
         self.vars = {}
         self.outer = outer
 
-    def get(self, name: str) -> Type:
+    def get(self, name: str):
         if name in self.vars:
             return self.vars[name]
         elif self.outer:
@@ -14,5 +11,5 @@ class Env:
         else:
             raise NameError(f"Unbound variable '{name}'")
 
-    def set(self, name: str, type: Type):
-        self.vars[name] = type
+    def set(self, name: str, value):
+        self.vars[name] = value

@@ -36,10 +36,12 @@ class TypeCheckerVisitor(NodeVisitor):
         with open("typed.rs", "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
 
+    ###############################################################
+
     def visit_AssignStmt(self, node: AssignStmt):
         stmt_type = self.visit(node.expr)
         self._log(node, f"{stmt_type}")
-        self.global_env.set(name=node.name, type=stmt_type)
+        self.global_env.set(name=node.name, value=stmt_type)
 
     def visit_ExprStmt(self, node: ExprStmt):
         stmt_type = self.visit(node.expr)
@@ -51,7 +53,7 @@ class TypeCheckerVisitor(NodeVisitor):
     def visit_LambdaExpr(self, node: LambdaExpr):
         old_env = self.cur_env
         self.cur_env = Env(self.cur_env)
-        self.cur_env.set(name=node.param_name, type=node.param_type)
+        self.cur_env.set(name=node.param_name, value=node.param_type)
 
         body_type = self.visit(node.body)
 
@@ -61,7 +63,7 @@ class TypeCheckerVisitor(NodeVisitor):
     def visit_TypeLambdaExpr(self, node: TypeLambdaExpr):
         old_env = self.cur_env
         self.cur_env = Env(self.cur_env)
-        self.cur_env.set(name=node.param_name, type=TypeType)
+        self.cur_env.set(name=node.param_name, value=TypeType)
 
         body_type = self.visit(node.body)
 
@@ -126,6 +128,12 @@ class TypeCheckerVisitor(NodeVisitor):
         right_type = self.visit(node.right)
         if left_type != IntType or right_type != IntType:
             self._error(node, f"Expected 'Int', got '{left_type}' and '{right_type}'")
+        return IntType
+    
+    def visit_NegExpr(self, node: NegExpr):
+        expr_type = self.visit(node.expr)
+        if expr_type != IntType:
+            self._error(node, f"Expected 'Int', got '{expr_type}'")
         return IntType
 
     def visit_FieldAccessExpr(self, node: FieldAccessExpr):
@@ -223,7 +231,7 @@ def _type_substitution(type: Type, old: NamedType, new: Type) -> Type:
         return RecordType(
             {label: _type_substitution(value, old, new) for label, value in type.fields.items()}
         )
-    
+
     elif isinstance(type, ForAllType):
         if type.param_name == old.name:
             return type

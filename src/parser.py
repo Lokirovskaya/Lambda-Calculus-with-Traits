@@ -54,7 +54,10 @@ RelExpr             ::= RelExpr (">" | "<" | "==" | ">=" | "<=" | "/=") AddExpr
 AddExpr             ::= AddExpr ("+" | "-") MulExpr
                         | MulExpr
 
-MulExpr             ::= MulExpr ("*" | "/") AppExpr
+MulExpr             ::= MulExpr ("*" | "/") NegExpr
+                        | NegExpr
+
+NegExpr             ::= "-" NegExpr
                         | AppExpr
 
 AppExpr|TypeAppExpr ::= AppExpr (TypeAnnotatedExpr | '@' Type)
@@ -477,12 +480,27 @@ class MulExpr(Expr):
     def parse(cls, tokens: TokenStream):
         lineno = tokens.cur_line()
         ops = (TokenType.MULT, TokenType.DIV)
-        left = AppExpr.parse(tokens)
+        left = NegExpr.parse(tokens)
         while tokens.peek().type in ops:
             op = tokens.expect(*ops).value
-            right = AppExpr.parse(tokens)
+            right = NegExpr.parse(tokens)
             left = MulExpr(left, op, right, lineno=lineno)
         return left
+
+
+@dataclass
+class NegExpr(Expr):
+    expr: Expr
+
+    @classmethod
+    def parse(cls, tokens: TokenStream):
+        lineno = tokens.cur_line()
+        if tokens.peek().type == TokenType.SUB:
+            tokens.expect(TokenType.SUB)
+            expr = NegExpr.parse(tokens)
+            return NegExpr(expr, lineno=lineno)
+        else:
+            return AppExpr.parse(tokens)
 
 
 _named_expr_start = {
