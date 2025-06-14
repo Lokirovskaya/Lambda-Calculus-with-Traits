@@ -2,8 +2,7 @@ from typing import NoReturn
 import dataclasses
 
 from .parser import *
-from .visitor import NodeVisitor
-from .env import Env
+from .visitor import NodeVisitor, TransformVisitor
 
 
 """
@@ -16,13 +15,15 @@ class InterpreterVisitor(NodeVisitor):
         super().__init__()
         self.global_var_dict = {}  # name |-> value
         self.bounded_var_names = []  # stack
-        self.stmt_eval_info = []  # [(lineno, info)]
 
-    def _error(self, node: ASTNode, msg: str) -> NoReturn:
-        raise ValueError(f"[Line {node.lineno}] Runtime Error: {msg}")
-    
-    def _log(self, node: ASTNode, msg: str):
-        self.stmt_eval_info.append((node.lineno, msg))
+        self.stmt_eval_info = []  # [(lineno, info)]
+        self.cur_lineno = None
+
+    def _error(self, msg: str) -> NoReturn:
+        raise ValueError(f"[Line {self.cur_lineno}] Runtime Error: {msg}")
+
+    def _log(self, msg: str):
+        self.stmt_eval_info.append((self.cur_lineno, msg))
 
     def print_eval_info(self, code: str):
         lines = code.splitlines()
@@ -34,13 +35,15 @@ class InterpreterVisitor(NodeVisitor):
     ###############################################################
 
     def visit_AssignStmt(self, node: AssignStmt):
+        self.cur_lineno = node.lineno
         stmt_eval = self.visit(node.expr)
         self.global_var_dict[node.name] = stmt_eval
-        self._log(node, f"{stmt_eval}")
+        self._log(f"{stmt_eval}")
 
     def visit_ExprStmt(self, node: ExprStmt):
+        self.cur_lineno = node.lineno
         eval = self.visit(node.expr)
-        self._log(node, f"{eval}")
+        self._log(f"{eval}")
 
     def visit_LambdaExpr(self, node: LambdaExpr):
         self.bounded_var_names.append(node.param_name)
@@ -178,8 +181,19 @@ class InterpreterVisitor(NodeVisitor):
         return dataclasses.replace(node, expr=eval)
 
     def visit_AppExpr(self, node: AppExpr):
-        # TODO
-        pass
+        func_eval = self.visit(node.func)
+        arg_eval = self.visit(node.arg)
+        if isinstance(func_eval, LambdaExpr):
+            subst = _TermSubstitutionVisitor(
+                old=NamedExpr(func_eval.param_name), new=arg_eval
+            ).visit(func_eval.body)
+            return self.visit(subst)
+
+        return dataclasses.replace(
+            node,
+            func=func_eval,
+            arg=arg_eval,
+        )
 
     def visit_TypeAppExpr(self, node: TypeAppExpr):
         # Type args erasure
@@ -200,23 +214,26 @@ class InterpreterVisitor(NodeVisitor):
         if node.name in self.bounded_var_names:
             return node
         else:
-            assert node.name in self.global_var_dict  # Ensured by type checker
+            assert (
+                node.name in self.global_var_dict
+            ), f"Line {self.cur_lineno}: Var '{node.name}' not found"  # Ensured by type checker
             return self.global_var_dict[node.name]
 
     def visit_ValueExpr(self, node: ValueExpr):
         return node
-    
+
     def visit_ListExpr(self, node: ListExpr):
         return dataclasses.replace(
             node,
             elements=[self.visit(e) for e in node.elements],
         )
-    
+
     def visit_RecordExpr(self, node: RecordExpr):
         return dataclasses.replace(
             node,
             fields={l: self.visit(v) for l, v in node.fields.items()},
         )
+
 
 def _is_true(expr: ValueExpr):
     return isinstance(expr, ValueExpr) and expr.value is True
@@ -231,4 +248,64 @@ def _is_val(expr: ValueExpr):
 
 
 def _to_value(expr, value):
-    return ValueExpr(value=value, lineno=expr.lineno)
+    return ValueExpr(value=value)
+
+
+_temp_name_idx = 0
+
+
+def _new_temp_name(name: str) -> str:
+    global _temp_name_idx
+    _temp_name_idx += 1
+    return f"{name}${_temp_name_idx}"
+
+
+class _TermSubstitutionVisitor(TransformVisitor):
+    def __init__(self, old: NamedExpr, new: Expr):
+        assert isinstance(old, NamedExpr)
+        self.old = old
+        self.new = new
+
+    def visit_LambdaExpr(self, node: LambdaExpr):
+        """
+        (λx. E)[x := N] = λx. E
+        (λy. E)[x := N] = λy. E[x := N]  if y ∉ FV(N)
+        (λy. E)[x := N] = λz. E[y := z][x := N]
+        """
+        if node.param_name == self.old.name:
+            return node
+        elif node.param_name not in _FreeVarVisitor().visit(self.new):
+            return LambdaExpr(node.param_name, None, self.visit(node.body))
+        else:
+            temp_name = _new_temp_name(node.param_name)
+            result_body = _TermSubstitutionVisitor(
+                NamedExpr(node.param_name), NamedExpr(temp_name)
+            ).visit(node.body)
+            result_body = self.visit(result_body)
+            return LambdaExpr(temp_name, None, result_body)
+
+    def visit_NamedExpr(self, node: NamedExpr):
+        if node.name == self.old.name:
+            return self.new
+        else:
+            return node
+
+
+class _FreeVarVisitor(NodeVisitor):
+    def __init__(self):
+        super().__init__()
+        self.bound_var_names = []
+        self.free_vars = set()
+
+    def visit(self, node: ASTNode):
+        super().visit(node)
+        return self.free_vars
+
+    def visit_ForAllType(self, node: ForAllType):
+        self.bound_var_names.append(node.param_name)
+        self.visit(node.body)
+        self.bound_var_names.pop()
+
+    def visit_NamedType(self, node: NamedType):
+        if node.name not in self.bound_var_names:
+            self.free_vars.add(node.name)
