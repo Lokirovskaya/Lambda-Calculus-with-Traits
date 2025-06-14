@@ -24,6 +24,7 @@ class TokenType(Enum):
     SUB = auto()
     MULT = auto()
     DIV = auto()
+    MOD = auto()
     ARROW = auto()
     EQ = auto()
     NEQ = auto()
@@ -89,6 +90,7 @@ _token_spec = {
     TokenType.SUB: r"-",
     TokenType.MULT: r"\*",
     TokenType.DIV: r"/",
+    TokenType.MOD: r"%",
     TokenType.BACKSLASH: r"\\",
     TokenType.AT: r"@",
     TokenType.IDENT: r"[a-zA-Z_][a-zA-Z0-9_]*",

@@ -56,7 +56,7 @@ RelExpr             ::= RelExpr (">" | "<" | "==" | ">=" | "<=" | "/=") AddExpr
 AddExpr             ::= AddExpr ("+" | "-") MulExpr
                         | MulExpr
 
-MulExpr             ::= MulExpr ("*" | "/") NegExpr
+MulExpr             ::= MulExpr ("*" | "/" | "%") NegExpr
                         | NegExpr
 
 NegExpr             ::= "-" NegExpr
@@ -352,7 +352,7 @@ class LambdaExpr(Expr):
 
     def __str__(self):
         if self.param_type is None:  # Erased type
-            return f"\\{self.param_name}: _. {self.body}"
+            return f"\\{self.param_name}. {self.body}"
         else:
             return f"\\{self.param_name}: {self.param_type}. {self.body}"
 
@@ -527,7 +527,7 @@ class MulExpr(Expr):
     @classmethod
     def parse(cls, tokens: TokenStream):
         lineno = tokens.cur_line()
-        ops = (TokenType.MULT, TokenType.DIV)
+        ops = (TokenType.MULT, TokenType.DIV, TokenType.MOD)
         left = NegExpr.parse(tokens)
         while tokens.peek().type in ops:
             op = tokens.expect(*ops).value
@@ -694,7 +694,12 @@ class ValueExpr(Expr):
     precedence: ClassVar[int] = 11
 
     def __str__(self):
-        return str(self.value)
+        if self.value is True:
+            return "true"
+        elif self.value is False:
+            return "false"
+        else:
+            return str(self.value)
 
 
 @dataclass
