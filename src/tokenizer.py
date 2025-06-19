@@ -51,6 +51,7 @@ class TokenType(Enum):
     IN = auto()
     FOR = auto()
     FORALL = auto()
+    TYPE = auto()
     WHITESPACE = auto()
     MISMATCH = auto()
     EOF = auto()
@@ -120,6 +121,7 @@ _key_words = {
     "in": TokenType.IN,
     "for": TokenType.FOR,
     "forall": TokenType.FORALL,
+    "type": TokenType.TYPE,
 }
 
 

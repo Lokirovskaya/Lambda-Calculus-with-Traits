@@ -3,7 +3,7 @@ from typing import NoReturn
 from .parser import *
 from .visitor import NodeVisitor, TransformVisitor
 from .env import Env
-from .builtin import BoolType, IntType, StringType, TypeType
+from .builtin import BoolType, IntType, StringType, TypeType, is_built_in_type
 
 
 """
@@ -16,6 +16,9 @@ class TypeCheckerVisitor(NodeVisitor):
         super().__init__()
         self.global_env: Env = Env()
         self.cur_env = self.global_env
+
+        self.type_getter_visitor = _TypeGetterVisitor()
+
         self.stmt_type_info = []  # [(lineno, info)]
 
     def _error(self, node: ASTNode, msg: str) -> NoReturn:
@@ -38,6 +41,11 @@ class TypeCheckerVisitor(NodeVisitor):
         self._log(node, f"{stmt_type}")
         self.global_env.set(name=node.name, value=stmt_type)
 
+    def visit_TypeAssignStmt(self, node: TypeAssignStmt):
+        self.type_getter_visitor.update_type_assign(
+            name=node.name, type=self.type_getter_visitor.visit(node.type)
+        )
+
     def visit_ExprStmt(self, node: ExprStmt):
         stmt_type = self.visit(node.expr)
         self._log(node, f"{stmt_type}")
@@ -48,21 +56,25 @@ class TypeCheckerVisitor(NodeVisitor):
     def visit_LambdaExpr(self, node: LambdaExpr):
         old_env = self.cur_env
         self.cur_env = Env(self.cur_env)
-        self.cur_env.set(name=node.param_name, value=node.param_type)
+
+        param_type = self.type_getter_visitor.visit(node.param_type)
+        self.cur_env.set(name=node.param_name, value=param_type)
 
         body_type = self.visit(node.body)
 
         self.cur_env = old_env
-        return ArrowType(node.param_type, body_type)
+        return ArrowType(param_type, body_type)
 
     def visit_TypeLambdaExpr(self, node: TypeLambdaExpr):
         old_env = self.cur_env
         self.cur_env = Env(self.cur_env)
         self.cur_env.set(name=node.param_name, value=TypeType)
+        self.type_getter_visitor.bounded_var_names.append(node.param_name)
 
         body_type = self.visit(node.body)
 
         self.cur_env = old_env
+        self.type_getter_visitor.bounded_var_names.pop()
         return ForAllType(node.param_name, body_type)
 
     def visit_IfExpr(self, node: IfExpr):
@@ -156,9 +168,9 @@ class TypeCheckerVisitor(NodeVisitor):
 
     def visit_TypeAppExpr(self, node: TypeAppExpr):
         forall_type = self.visit(node.func)
-        type_arg = node.type_arg
+        type_arg = self.type_getter_visitor.visit(node.type_arg)
         if not isinstance(forall_type, ForAllType):
-            self._error(node, f"ForAll type expected, got '{forall_type}'")
+            self._error(node, f"For-all type expected, got '{forall_type}'")
 
         return _TypeSubstitutionVisitor(
             old=NamedType(forall_type.param_name),
@@ -167,7 +179,7 @@ class TypeCheckerVisitor(NodeVisitor):
 
     def visit_TypeAnnotatedExpr(self, node: TypeAnnotatedExpr):
         expr_type = self.visit(node.expr)
-        if expr_type != node.type:
+        if expr_type != self.type_getter_visitor.visit(node.type):
             self._error(node, f"Annotated type '{node.type}', got '{expr_type}'")
         return expr_type
 
@@ -208,6 +220,43 @@ class TypeCheckerVisitor(NodeVisitor):
         return record_type
 
 
+class _TypeGetterVisitor(NodeVisitor):
+    def __init__(self):
+        super().__init__()
+        self.global_var_dict = {}  # name |-> type
+        self.bounded_var_names = []
+
+    def update_type_assign(self, name: str, type: Type):
+        self.global_var_dict[name] = type
+
+    def visit_ForAllType(self, node: ForAllType):
+        self.bounded_var_names.append(node.param_name)
+        type = self.visit(node.body)
+        self.bounded_var_names.pop()
+        return ForAllType(node.param_name, type)
+
+    def visit_ArrowType(self, node: ArrowType):
+        left_type = self.visit(node.left)
+        right_type = self.visit(node.right)
+        return ArrowType(left_type, right_type)
+
+    def visit_NamedType(self, node: NamedType):
+        if is_built_in_type(node):
+            return node
+        if node.name in self.bounded_var_names:
+            return node
+        elif node.name in self.global_var_dict:
+            return self.global_var_dict[node.name]
+        else:
+            raise TypeError(f"[Line {node.lineno}] Unknown type '{node.name}'")
+
+    def visit_ListType(self, node: ListType):
+        return ListType(self.visit(node.element_type))
+
+    def visit_RecordType(self, node: RecordType):
+        return RecordType({label: self.visit(type) for label, type in node.fields.items()})
+
+
 _temp_name_idx = 0
 
 
@@ -240,7 +289,7 @@ class _TypeSubstitutionVisitor(TransformVisitor):
             ).visit(node.body)
             result_body = self.visit(result_body)
             return ForAllType(temp_name, result_body)
-        
+
     def visit_NamedType(self, node: NamedType):
         if node.name == self.old.name:
             return self.new

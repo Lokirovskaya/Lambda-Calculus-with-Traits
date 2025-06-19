@@ -8,6 +8,7 @@ from typing import ClassVar
 Program             ::= Statement*
 
 Statement           ::= AssignStmt
+                        | TypeAssignStmt
                         | ExprStmt
                         | TraitStmt
                         | StructStmt
@@ -15,6 +16,8 @@ Statement           ::= AssignStmt
                         | ;
 
 AssignStmt          ::= IDENT "=" Expr ";"
+
+TypeAssignStmt      ::= "type" IDENT "=" Type ";"
 
 ExprStmt            ::= Expr ";"
 
@@ -182,6 +185,8 @@ class Stmt(ASTNode):
             return StructStmt.parse(tokens)
         elif tokens.peek().type == TokenType.IMPL:
             return ImplStmt.parse(tokens)
+        elif tokens.peek().type == TokenType.TYPE:
+            return TypeAssignStmt.parse(tokens)
         elif (
             tokens.peek().type == TokenType.IDENT
             and tokens.peek_forward(1).type == TokenType.ASSIGN
@@ -204,6 +209,22 @@ class AssignStmt(Stmt):
         value = Expr.parse(tokens)
         tokens.expect(TokenType.SEMICOLON)
         return AssignStmt(name, value, lineno=lineno)
+    
+
+@dataclass
+class TypeAssignStmt(ASTNode):
+    name: str
+    type: Type
+
+    @classmethod
+    def parse(cls, tokens: TokenStream):
+        lineno = tokens.cur_line()
+        tokens.expect(TokenType.TYPE)
+        name = tokens.expect(TokenType.IDENT).value
+        tokens.expect(TokenType.ASSIGN)
+        type = Type.parse(tokens)
+        tokens.expect(TokenType.SEMICOLON)
+        return TypeAssignStmt(name, type, lineno=lineno)
 
 
 @dataclass
