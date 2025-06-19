@@ -166,7 +166,7 @@ class InterpreterVisitor(NodeVisitor):
             elif node.op == "/":
                 return _to_value(node, left_eval.value // right_eval.value)
             elif node.op == "%":
-                return _to_value(node, left_eval.value // right_eval.value)
+                return _to_value(node, left_eval.value % right_eval.value)
             else:
                 self._error(node, f"Unknown operator for MulExpr: {node.op}")
 

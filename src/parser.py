@@ -41,13 +41,13 @@ TypeLambdaExpr      ::= "\\" IDENT "." Expr
 IfExpr              ::= "if" Expr "then" Expr "else" Expr
                         | LogicOrExpr
 
-LogicOrExpr         ::= LogicOrExpr "or" LogicAndExpr 
+LogicOrExpr         ::= LogicOrExpr "||" LogicAndExpr 
                         | LogicAndExpr
 
-LogicAndExpr        ::= LogicAndExpr "and" LogicNotExpr 
+LogicAndExpr        ::= LogicAndExpr "&&" LogicNotExpr 
                         | LogicNotExpr
 
-LogicNotExpr        ::= "not" LogicNotExpr
+LogicNotExpr        ::= "!" LogicNotExpr
                         | RelExpr
 
 RelExpr             ::= RelExpr (">" | "<" | "==" | ">=" | "<=" | "/=") AddExpr
@@ -424,7 +424,7 @@ class LogicOrExpr(Expr):
         return left
 
     def __str__(self):
-        return f"{self.wrap(self.left)} or {self.wrap(self.right)}"
+        return f"{self.wrap(self.left)} || {self.wrap(self.right)}"
 
 
 @dataclass
@@ -444,7 +444,7 @@ class LogicAndExpr(Expr):
         return left
 
     def __str__(self):
-        return f"{self.wrap(self.left)} and {self.wrap(self.right)}"
+        return f"{self.wrap(self.left)} && {self.wrap(self.right)}"
 
 
 @dataclass
@@ -463,7 +463,7 @@ class LogicNotExpr(Expr):
             return RelExpr.parse(tokens)
 
     def __str__(self):
-        return f"not {self.wrap(self.expr)}"
+        return f"!{self.wrap(self.expr)}"
 
 
 @dataclass
