@@ -1,5 +1,6 @@
 import sys
 from src.parser import parse
+from src.trait import TraitDesugarVisitor
 from src.type_checker import TypeCheckerVisitor
 from src.interpreter import InterpreterVisitor
 
@@ -20,6 +21,9 @@ if __name__ == "__main__":
         code = open(code_file, "r", encoding="utf-8").read()
 
         tree = parse(code)
+
+        trait = TraitDesugarVisitor()
+        tree = trait.visit(tree)
 
         type_checker = TypeCheckerVisitor()
         type_checker.visit(tree)

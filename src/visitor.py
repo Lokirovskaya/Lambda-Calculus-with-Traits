@@ -34,26 +34,23 @@ class TransformVisitor:
             if isinstance(value, list):
                 new_list = []
                 for item in value:
-                    if isinstance(item, ASTNode):
-                        new_item = self.visit(item)
-                        if new_item is not None:
-                            new_list.append(new_item)
-                    else:
-                        new_list.append(item)
+                    new_item = self.visit(item)
+                    if isinstance(new_item, list):
+                        new_list.extend(new_item)
+                    elif new_item is not None:
+                        new_list.append(new_item)
                 updated_fields[field] = new_list
             elif isinstance(value, dict):
                 new_dict = {}
                 for k, v in value.items():
-                    if isinstance(v, ASTNode):
-                        new_v = self.visit(v)
-                        if new_v is not None:
-                            new_dict[k] = new_v
-                    else:
-                        new_dict[k] = v
+                    new_v = self.visit(v)
+                    if new_v is not None:
+                        new_dict[k] = new_v
                 updated_fields[field] = new_dict
             elif isinstance(value, ASTNode):
                 new_node = self.visit(value)
-                updated_fields[field] = new_node
+                if new_node is not None and isinstance(new_node, ASTNode):
+                    updated_fields[field] = new_node
             else:
                 updated_fields[field] = value
         return replace(node, **updated_fields)

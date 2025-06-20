@@ -38,12 +38,12 @@ class InterpreterVisitor(NodeVisitor):
         self.cur_lineno = node.lineno
         stmt_eval = self.visit(node.expr)
         self.global_var_dict[node.name] = stmt_eval
-        self._log(f"{stmt_eval}")
+        self._log(f"{node.name} = {stmt_eval}")
 
     def visit_ExprStmt(self, node: ExprStmt):
         self.cur_lineno = node.lineno
         eval = self.visit(node.expr)
-        self._log(f"{eval}")
+        self._log(f"= {eval}")
 
     def visit_LambdaExpr(self, node: LambdaExpr):
         self.bounded_var_names.append(node.param_name)

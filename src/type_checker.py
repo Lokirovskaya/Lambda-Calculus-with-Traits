@@ -38,17 +38,17 @@ class TypeCheckerVisitor(NodeVisitor):
 
     def visit_AssignStmt(self, node: AssignStmt):
         stmt_type = self.visit(node.expr)
-        self._log(node, f"{stmt_type}")
+        self._log(node, f"{node.name}: {stmt_type}")
         self.global_env.set(name=node.name, value=stmt_type)
 
     def visit_TypeAssignStmt(self, node: TypeAssignStmt):
-        self.type_getter_visitor.update_type_assign(
-            name=node.name, type=self.type_getter_visitor.visit(node.type)
-        )
+        type = self.type_getter_visitor.visit(node.type)
+        self._log(node, f"type {node.name} = {type}")
+        self.type_getter_visitor.update_type_assign(name=node.name, type=type)
 
     def visit_ExprStmt(self, node: ExprStmt):
         stmt_type = self.visit(node.expr)
-        self._log(node, f"{stmt_type}")
+        self._log(node, f": {stmt_type}")
 
     def visit_Expr(self, node: Expr):
         return self.visit(node.expr)

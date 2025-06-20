@@ -42,8 +42,6 @@ class TokenType(Enum):
     IF = auto()
     ELSE = auto()
     THEN = auto()
-    WHERE = auto()
-    END = auto()
     TRAIT = auto()
     STRUCT = auto()
     IMPL = auto()
@@ -112,8 +110,6 @@ _key_words = {
     "if": TokenType.IF,
     "else": TokenType.ELSE,
     "then": TokenType.THEN,
-    "where": TokenType.WHERE,
-    "end": TokenType.END,
     "trait": TokenType.TRAIT,
     "struct": TokenType.STRUCT,
     "impl": TokenType.IMPL,

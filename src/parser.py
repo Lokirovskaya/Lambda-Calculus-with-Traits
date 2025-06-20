@@ -21,11 +21,11 @@ TypeAssignStmt      ::= "type" IDENT "=" Type ";"
 
 ExprStmt            ::= Expr ";"
 
-TraitStmt           ::= "trait" IDENT IDENT+ "where" TypeBindItem* "end"
+TraitStmt           ::= "trait" IDENT IDENT+ "{" TypeBindItem* "}"
 
-StructStmt          ::= "struct" IDENT "where" TypeBindItem* "end"
+StructStmt          ::= "struct" IDENT "{" TypeBindItem* "}"
 
-ImplStmt            ::= "impl" IDENT "for" Type "where" ImplItem* "end"
+ImplStmt            ::= "impl" IDENT "for" Type "{" ImplItem* "}"
 
 TypeBindItem        ::= IDENT ":" Type ";"
 
@@ -38,7 +38,7 @@ Expr                ::= LambdaExpr
 LambdaExpr          ::= "\\" IDENT ":" Type "." Expr
                         | TypeLambdaExpr
 
-TypeLambdaExpr      ::= "\\" IDENT "." Expr
+TypeLambdaExpr      ::= "\\" "@" IDENT "." Expr
                         | IfExpr
 
 IfExpr              ::= "if" Expr "then" Expr "else" Expr
@@ -253,11 +253,11 @@ class TraitStmt(Stmt):
         type_params = []
         while tokens.peek().type == TokenType.IDENT:
             type_params.append(tokens.expect(TokenType.IDENT).value)
-        tokens.expect(TokenType.WHERE)
+        tokens.expect(TokenType.LBRACE)
         items = []
-        while tokens.peek().type != TokenType.END:
+        while tokens.peek().type != TokenType.RBRACE:
             items.append(TypeBindItem.parse(tokens))
-        tokens.expect(TokenType.END)
+        tokens.expect(TokenType.RBRACE)
         return TraitStmt(name, type_params, items, lineno=lineno)
 
 
@@ -271,11 +271,11 @@ class StructStmt(Stmt):
         lineno = tokens.cur_line()
         tokens.expect(TokenType.STRUCT)
         name = tokens.expect(TokenType.IDENT).value
-        tokens.expect(TokenType.WHERE)
+        tokens.expect(TokenType.LBRACE)
         items = []
-        while tokens.peek().type != TokenType.END:
+        while tokens.peek().type != TokenType.RBRACE:
             items.append(TypeBindItem.parse(tokens))
-        tokens.expect(TokenType.END)
+        tokens.expect(TokenType.RBRACE)
         return StructStmt(name, items, lineno=lineno)
 
 
@@ -292,11 +292,11 @@ class ImplStmt(Stmt):
         name = tokens.expect(TokenType.IDENT).value
         tokens.expect(TokenType.FOR)
         type_param = Type.parse(tokens)
-        tokens.expect(TokenType.WHERE)
+        tokens.expect(TokenType.LBRACE)
         items = []
-        while tokens.peek().type != TokenType.END:
+        while tokens.peek().type != TokenType.RBRACE:
             items.append(AssignItem.parse(tokens))
-        tokens.expect(TokenType.END)
+        tokens.expect(TokenType.RBRACE)
         return ImplStmt(name, type_param, items, lineno=lineno)
 
 
@@ -359,7 +359,7 @@ class LambdaExpr(Expr):
         lineno = tokens.cur_line()
         if (
             tokens.peek().type == TokenType.BACKSLASH
-            and tokens.peek_forward(2).type == TokenType.COLON
+            and tokens.peek_forward(1).type == TokenType.IDENT
         ):
             tokens.expect(TokenType.BACKSLASH)
             param_name = tokens.expect(TokenType.IDENT).value
@@ -389,9 +389,10 @@ class TypeLambdaExpr(Stmt):
         lineno = tokens.cur_line()
         if (
             tokens.peek().type == TokenType.BACKSLASH
-            and tokens.peek_forward(2).type == TokenType.DOT
+            and tokens.peek_forward(1).type == TokenType.AT
         ):
             tokens.expect(TokenType.BACKSLASH)
+            tokens.expect(TokenType.AT)
             param_name = tokens.expect(TokenType.IDENT).value
             tokens.expect(TokenType.DOT)
             body = Expr.parse(tokens)
@@ -400,7 +401,7 @@ class TypeLambdaExpr(Stmt):
             return IfExpr.parse(tokens)
 
     def __str__(self):
-        return f"\\{self.param_name}. {self.body}"
+        return f"\\@{self.param_name}. {self.body}"
 
 
 @dataclass
@@ -924,7 +925,7 @@ class RecordType(Type):
         return sorted(self.fields.items())
 
     def __str__(self):
-        return "{" + ", ".join(f"{name}: {type}" for name, type in self.sorted_fields) + "}"
+        return "{" + ", ".join(f"{name}: {type}" for name, type in self.fields.items()) + "}"
 
     def __eq__(self, other):
         return isinstance(other, RecordType) and self.sorted_fields == other.sorted_fields
