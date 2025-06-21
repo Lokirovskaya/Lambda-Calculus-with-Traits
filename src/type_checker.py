@@ -1,9 +1,10 @@
 from typing import NoReturn
 
 from .parser import *
-from .visitor import NodeVisitor, TransformVisitor
+from .visitor import NodeVisitor
 from .env import Env
-from .builtin import BoolType, IntType, StringType, TypeType, is_built_in_type
+from .builtin import BoolType, IntType, StringType, TypeType
+from .type_solver import TypeSubstitutionVisitor
 
 
 """
@@ -14,10 +15,11 @@ No TraitStmt, StructStmt, ImplStmt here
 class TypeCheckerVisitor(NodeVisitor):
     def __init__(self):
         super().__init__()
-        self.global_env: Env = Env()
+        self.global_env: Env = Env()  # expr |-> type
         self.cur_env = self.global_env
 
-        self.type_getter_visitor = TypeGetterVisitor()
+        self.global_trait_inst_env: Env = Env()  # (trait_name, type) |-> trait_inst
+        self.cur_trait_inst_env = self.global_trait_inst_env
 
         self.stmt_type_info = []  # [(lineno, info)]
 
@@ -31,7 +33,7 @@ class TypeCheckerVisitor(NodeVisitor):
         lines = code.splitlines()
         for lineno, info in self.stmt_type_info:
             lines[lineno - 1] = f"// {info}\n{lines[lineno - 1]}"
-        with open("typed.rs", "w", encoding="utf-8") as f:
+        with open("step3_type_checked.rs", "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
 
     ###############################################################
@@ -41,14 +43,12 @@ class TypeCheckerVisitor(NodeVisitor):
         self._log(node, f"{node.name}: {stmt_type}")
         self.global_env.set(name=node.name, value=stmt_type)
 
-    def visit_TypeAssignStmt(self, node: TypeAssignStmt):
-        type = self.type_getter_visitor.visit(node.type)
-        self._log(node, f"type {node.name} = {type}")
-        self.type_getter_visitor.update_type_assign(name=node.name, type=type)
-
     def visit_ExprStmt(self, node: ExprStmt):
         stmt_type = self.visit(node.expr)
         self._log(node, f": {stmt_type}")
+
+    def visit_InstanceStmt(self, node: InstanceStmt):
+        self.global_trait_inst_env.set(name=(node.name, node.type_param), value=node.inst_expr)
 
     def visit_Expr(self, node: Expr):
         return self.visit(node.expr)
@@ -57,24 +57,21 @@ class TypeCheckerVisitor(NodeVisitor):
         old_env = self.cur_env
         self.cur_env = Env(self.cur_env)
 
-        param_type = self.type_getter_visitor.visit(node.param_type)
-        self.cur_env.set(name=node.param_name, value=param_type)
+        self.cur_env.set(name=node.param_name, value=node.param_type)
 
         body_type = self.visit(node.body)
 
         self.cur_env = old_env
-        return ArrowType(param_type, body_type)
+        return ArrowType(node.param_type, body_type)
 
     def visit_TypeLambdaExpr(self, node: TypeLambdaExpr):
         old_env = self.cur_env
         self.cur_env = Env(self.cur_env)
         self.cur_env.set(name=node.param_name, value=TypeType)
-        self.type_getter_visitor.bounded_var_names.append(node.param_name)
 
         body_type = self.visit(node.body)
 
         self.cur_env = old_env
-        self.type_getter_visitor.bounded_var_names.pop()
         return ForAllType(node.param_name, body_type)
 
     def visit_IfExpr(self, node: IfExpr):
@@ -168,18 +165,17 @@ class TypeCheckerVisitor(NodeVisitor):
 
     def visit_TypeAppExpr(self, node: TypeAppExpr):
         forall_type = self.visit(node.func)
-        type_arg = self.type_getter_visitor.visit(node.type_arg)
         if not isinstance(forall_type, ForAllType):
             self._error(node, f"For-all type expected, got '{forall_type}'")
 
         return TypeSubstitutionVisitor(
             old=NamedType(forall_type.param_name),
-            new=type_arg,
+            new=node.type_arg,
         ).visit(forall_type.body)
 
     def visit_TypeAnnotatedExpr(self, node: TypeAnnotatedExpr):
         expr_type = self.visit(node.expr)
-        if expr_type != self.type_getter_visitor.visit(node.type):
+        if expr_type != node.type:
             self._error(node, f"Annotated type '{node.type}', got '{expr_type}'")
         return expr_type
 
@@ -218,100 +214,3 @@ class TypeCheckerVisitor(NodeVisitor):
     def visit_RecordExpr(self, node: RecordExpr):
         record_type = RecordType({label: self.visit(value) for label, value in node.fields.items()})
         return record_type
-
-
-class TypeGetterVisitor(NodeVisitor):
-    def __init__(self):
-        super().__init__()
-        self.global_var_dict = {}  # name |-> type
-        self.bounded_var_names = []
-
-    def update_type_assign(self, name: str, type: Type):
-        self.global_var_dict[name] = type
-
-    def visit_ForAllType(self, node: ForAllType):
-        self.bounded_var_names.append(node.param_name)
-        type = self.visit(node.body)
-        self.bounded_var_names.pop()
-        return ForAllType(node.param_name, type)
-
-    def visit_ArrowType(self, node: ArrowType):
-        left_type = self.visit(node.left)
-        right_type = self.visit(node.right)
-        return ArrowType(left_type, right_type)
-
-    def visit_NamedType(self, node: NamedType):
-        if is_built_in_type(node):
-            return node
-        if node.name in self.bounded_var_names:
-            return node
-        elif node.name in self.global_var_dict:
-            return self.global_var_dict[node.name]
-        else:
-            raise TypeError(f"[Line {node.lineno}] Unknown type '{node.name}'")
-
-    def visit_ListType(self, node: ListType):
-        return ListType(self.visit(node.element_type))
-
-    def visit_RecordType(self, node: RecordType):
-        return RecordType({label: self.visit(type) for label, type in node.fields.items()})
-
-
-_temp_name_idx = 0
-
-
-def _new_temp_name(name: str) -> str:
-    global _temp_name_idx
-    _temp_name_idx += 1
-    return f"{name}${_temp_name_idx}"
-
-
-class TypeSubstitutionVisitor(TransformVisitor):
-    def __init__(self, old: NamedType, new: Type):
-        assert isinstance(old, NamedType)
-        self.old = old
-        self.new = new
-
-    def visit_ForAllType(self, node: ForAllType):
-        """
-        (λx. E)[x := N] = λx. E
-        (λy. E)[x := N] = λy. E[x := N]  if y ∉ FV(N)
-        (λy. E)[x := N] = λz. E[y := z][x := N]
-        """
-        if node.param_name == self.old.name:
-            return node
-        elif node.param_name not in _FreeVarVisitor().visit(self.new):
-            return ForAllType(node.param_name, self.visit(node.body))
-        else:
-            temp_name = _new_temp_name(node.param_name)
-            result_body = TypeSubstitutionVisitor(
-                NamedType(node.param_name), NamedType(temp_name)
-            ).visit(node.body)
-            result_body = self.visit(result_body)
-            return ForAllType(temp_name, result_body)
-
-    def visit_NamedType(self, node: NamedType):
-        if node.name == self.old.name:
-            return self.new
-        else:
-            return node
-
-
-class _FreeVarVisitor(NodeVisitor):
-    def __init__(self):
-        super().__init__()
-        self.bound_var_names = []
-        self.free_vars = set()
-
-    def visit(self, node: ASTNode):
-        super().visit(node)
-        return self.free_vars
-
-    def visit_ForAllType(self, node: ForAllType):
-        self.bound_var_names.append(node.param_name)
-        self.visit(node.body)
-        self.bound_var_names.pop()
-
-    def visit_NamedType(self, node: NamedType):
-        if node.name not in self.bound_var_names:
-            self.free_vars.add(node.name)

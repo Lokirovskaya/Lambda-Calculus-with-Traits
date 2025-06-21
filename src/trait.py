@@ -39,10 +39,10 @@ class TraitVisitor(TransformVisitor):
 
         # field funcs
         for item in node.items:
-            # show = \a impl Show. \dict: Show a. dict.show
+            # show = \a. \dict: Show a. dict.show
             lambda_expr = TypeLambdaExpr(
                 param_name=node.type_params[0],
-                trait_bounds=[node.name],
+                trait_bounds=[],
                 body=LambdaExpr(
                     param_name="__dict",
                     param_type=AppType(NamedType(node.name), NamedType(node.type_params[0])),

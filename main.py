@@ -1,6 +1,7 @@
 import sys
 from src.parser import parse
 from src.trait import TraitVisitor
+from src.type_solver import TypeSolverVisitor
 from src.type_checker import TypeCheckerVisitor
 from src.interpreter import InterpreterVisitor
 
@@ -28,7 +29,11 @@ if __name__ == "__main__":
 
         trait = TraitVisitor()
         tree = trait.visit(tree)
-        print_program("desugar.rs", tree)
+        print_program("step1_desugar.rs", tree)
+
+        type_solver = TypeSolverVisitor()
+        tree = type_solver.visit(tree)
+        print_program("step2_type_solved.rs", tree)
 
         type_checker = TypeCheckerVisitor()
         type_checker.visit(tree)
