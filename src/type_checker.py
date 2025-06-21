@@ -15,40 +15,44 @@ No TraitStmt, StructStmt, ImplStmt here
 class TypeCheckerVisitor(NodeVisitor):
     def __init__(self):
         super().__init__()
+
+        # global_env 中包含 assignment bindings 和 trait fields
         self.global_env: Env = Env()  # expr |-> type
         self.cur_env = self.global_env
 
-        self.global_trait_inst_env: Env = Env()  # (trait_name, type) |-> trait_inst
-        self.cur_trait_inst_env = self.global_trait_inst_env
+        self.get_inst_types: dict[str, set[Type]] = {}  # trait_name |-> set of inst_types
 
-        self.stmt_type_info = []  # [(lineno, info)]
+        with open("step3_type_checked.rs", "w", encoding="utf-8") as f:
+            pass
+
+    def _log(self, stmt, type):
+        with open("step3_type_checked.rs", "a", encoding="utf-8") as f:
+            if type is not None:
+                f.write(f"{stmt}\n// : {type}\n\n")
+            else:
+                f.write(f"{stmt}\n\n")
 
     def _error(self, node: ASTNode, msg: str) -> NoReturn:
         raise TypeError(f"[Line {node.lineno}] Type Error: {msg}")
-
-    def _log(self, node: ASTNode, msg: str):
-        self.stmt_type_info.append((node.lineno, msg))
-
-    def print_type_info(self, code: str):
-        lines = code.splitlines()
-        for lineno, info in self.stmt_type_info:
-            lines[lineno - 1] = f"// {info}\n{lines[lineno - 1]}"
-        with open("step3_type_checked.rs", "w", encoding="utf-8") as f:
-            f.write("\n".join(lines))
 
     ###############################################################
 
     def visit_AssignStmt(self, node: AssignStmt):
         stmt_type = self.visit(node.expr)
-        self._log(node, f"{node.name}: {stmt_type}")
         self.global_env.set(name=node.name, value=stmt_type)
+        self._log(node, stmt_type)
 
     def visit_ExprStmt(self, node: ExprStmt):
-        stmt_type = self.visit(node.expr)
-        self._log(node, f": {stmt_type}")
+        expr_type = self.visit(node.expr)
+        self._log(node, expr_type)
 
-    def visit_InstanceStmt(self, node: InstanceStmt):
-        self.global_trait_inst_env.set(name=(node.name, node.type_param), value=node.inst_expr)
+    def visit_TraitFieldEnvStmt(self, node: TraitFieldEnvStmt):
+        self.global_env.set(name=node.field_name, value=node.type)
+        self._log(node, None)
+
+    def visit_InstanceEnvStmt(self, node: InstanceEnvStmt):
+        self.get_inst_types.setdefault(node.name, set()).add(node.type_param)
+        self._log(node, None)
 
     def visit_Expr(self, node: Expr):
         return self.visit(node.expr)
@@ -72,7 +76,7 @@ class TypeCheckerVisitor(NodeVisitor):
         body_type = self.visit(node.body)
 
         self.cur_env = old_env
-        return ForAllType(node.param_name, body_type)
+        return ForAllType(node.param_name, body_type, trait_bounds=node.trait_bounds)
 
     def visit_IfExpr(self, node: IfExpr):
         cond_type = self.visit(node.condition)
@@ -167,6 +171,13 @@ class TypeCheckerVisitor(NodeVisitor):
         forall_type = self.visit(node.func)
         if not isinstance(forall_type, ForAllType):
             self._error(node, f"For-all type expected, got '{forall_type}'")
+
+        if len(forall_type.trait_bounds) > 0:
+            inst_types = set()
+            for bound in forall_type.trait_bounds:
+                inst_types.update(self.get_inst_types[bound])
+            if node.type_arg not in inst_types:
+                self._error(node, f"Type '{node.type_arg}' does not satisfy trait bounds '{" + ".join(forall_type.trait_bounds)}'")
 
         return TypeSubstitutionVisitor(
             old=NamedType(forall_type.param_name),

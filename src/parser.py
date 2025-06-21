@@ -91,7 +91,7 @@ RecordExpr          ::= "{" IDENT "=" Expr ("," Expr "=" Expr)* "}"
 
 Type                ::= ForAllType
 
-ForAllType          ::= "forall" IDENT "." Type
+ForAllType          ::= "forall" IDENT ("impl" TypeBound)? "." Type
                         | ArrowType
 
 ArrowType           ::= AppType "->" ArrowType
@@ -256,13 +256,23 @@ class ExprStmt(Stmt):
 
 
 @dataclass
-class InstanceStmt(Stmt):
+class InstanceEnvStmt(Stmt):
     name: str
     type_param: Type
     inst_expr: Expr
 
     def __str__(self):
-        return f"instance {self.name} ({self.type_param}) = {self.inst_expr};"
+        return f"// (Env) trait-instance {self.name} ({self.type_param}) = {self.inst_expr};"
+
+
+@dataclass
+class TraitFieldEnvStmt(Stmt):
+    field_name: str
+    trait_name: str
+    type: Type
+
+    def __str__(self):
+        return f"// (Env) trait-field {self.trait_name}.{self.field_name}: {self.type};"
 
 
 @dataclass
@@ -646,7 +656,7 @@ class AppExpr(Expr):
                 func = AppExpr(func, arg, lineno=lineno)
             elif tokens.peek().type == TokenType.AT:
                 tokens.expect(TokenType.AT)
-                type_arg = Type.parse(tokens)
+                type_arg = NamedType.parse(tokens)
                 func = TypeAppExpr(func, type_arg, lineno=lineno)
             else:
                 break
@@ -830,6 +840,7 @@ class Type(ASTNode):
 class ForAllType(Type):
     param_name: str
     body: Type
+    trait_bounds: list[str]
     precedence: ClassVar[int] = 0
 
     @classmethod
@@ -838,16 +849,27 @@ class ForAllType(Type):
         if tokens.peek().type == TokenType.FORALL:
             tokens.expect(TokenType.FORALL)
             param_name = tokens.expect(TokenType.IDENT).value
+            trait_bounds = []
+            # has bounds?
+            if tokens.peek().type == TokenType.IMPL:
+                tokens.expect(TokenType.IMPL)
+                while tokens.peek().type != TokenType.DOT:
+                    trait_bounds.append(tokens.expect(TokenType.IDENT).value)
+                    if tokens.peek().type == TokenType.ADD:
+                        tokens.expect(TokenType.ADD)
             tokens.expect(TokenType.DOT)
             body = Type.parse(tokens)
-            return ForAllType(param_name, body, lineno=lineno)
+            return ForAllType(param_name, body, trait_bounds, lineno=lineno)
         else:
             return ArrowType.parse(tokens)
 
     def __str__(self):
         param_name = self.param_name
         body = str(self.body)
-        return f"forall {param_name}. {body}"
+        if len(self.trait_bounds) == 0:
+            return f"forall {param_name}. {body}"
+        else:
+            return f"forall {param_name} impl {' + '.join(self.trait_bounds)}. {body}"
 
     def __eq__(self, other):
         return (

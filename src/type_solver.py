@@ -34,9 +34,9 @@ class TypeSolverVisitor(TransformVisitor):
 
     def visit_ForAllType(self, node: ForAllType):
         self.bounded_var_names.append(node.param_name)
-        type = self.visit(node.body)
+        body = self.visit(node.body)
         self.bounded_var_names.pop()
-        return ForAllType(node.param_name, type, lineno=node.lineno)
+        return replace(node, body=body)
 
     def visit_ArrowType(self, node: ArrowType):
         left_type = self.visit(node.left)

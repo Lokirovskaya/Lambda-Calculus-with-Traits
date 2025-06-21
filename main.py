@@ -37,11 +37,9 @@ if __name__ == "__main__":
 
         type_checker = TypeCheckerVisitor()
         type_checker.visit(tree)
-        type_checker.print_type_info(code)
 
-        interpreter = InterpreterVisitor()
-        interpreter.visit(tree)
-        interpreter.print_eval_info(code)
+        # interpreter = InterpreterVisitor()
+        # interpreter.visit(tree)
 
     except Exception as e:
         if debug:
