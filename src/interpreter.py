@@ -19,18 +19,18 @@ class InterpreterVisitor(NodeVisitor):
         self.stmt_eval_info = []  # [(lineno, info)]
         self.cur_lineno = None
 
+        with open("step5_eval.rs", "w", encoding="utf-8") as f:
+            pass
+
     def _error(self, msg: str) -> NoReturn:
         raise ValueError(f"[Line {self.cur_lineno}] Runtime Error: {msg}")
 
-    def _log(self, msg: str):
-        self.stmt_eval_info.append((self.cur_lineno, msg))
-
-    def print_eval_info(self, code: str):
-        lines = code.splitlines()
-        for lineno, info in self.stmt_eval_info:
-            lines[lineno - 1] = f"// {info}\n{lines[lineno - 1]}"
-        with open("step5_eval.rs", "w", encoding="utf-8") as f:
-            f.write("\n".join(lines))
+    def _log(self, stmt, result):
+        with open("step5_eval.rs", "a", encoding="utf-8") as f:
+            if result is not None:
+                f.write(f"{stmt}\n// ==> {result}\n\n")
+            else:
+                f.write(f"{stmt}\n\n")
 
     ###############################################################
 
@@ -38,12 +38,12 @@ class InterpreterVisitor(NodeVisitor):
         self.cur_lineno = node.lineno
         stmt_eval = self.visit(node.expr)
         self.global_var_dict[node.name] = stmt_eval
-        self._log(f"{node.name} = {stmt_eval}")
+        self._log(node, stmt_eval)
 
     def visit_ExprStmt(self, node: ExprStmt):
         self.cur_lineno = node.lineno
         eval = self.visit(node.expr)
-        self._log(f"= {eval}")
+        self._log(node, eval)
 
     def visit_LambdaExpr(self, node: LambdaExpr):
         self.bounded_var_names.append(node.param_name)

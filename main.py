@@ -3,6 +3,7 @@ from src.parser import parse
 from src.trait import TraitVisitor
 from src.type_solver import TypeSolverVisitor
 from src.type_checker import TypeCheckerVisitor
+from src.dispatcher import DispatcherVisitor
 from src.interpreter import InterpreterVisitor
 
 
@@ -38,8 +39,12 @@ if __name__ == "__main__":
         type_checker = TypeCheckerVisitor()
         type_checker.visit(tree)
 
-        # interpreter = InterpreterVisitor()
-        # interpreter.visit(tree)
+        dispatcher = DispatcherVisitor()
+        tree = dispatcher.visit(tree)
+        print_program("step4_dispatched.rs", tree)
+
+        interpreter = InterpreterVisitor()
+        interpreter.visit(tree)
 
     except Exception as e:
         if debug:
