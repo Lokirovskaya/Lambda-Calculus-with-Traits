@@ -17,7 +17,7 @@ class TypeCheckerVisitor(NodeVisitor):
         self.global_env: Env = Env()
         self.cur_env = self.global_env
 
-        self.type_getter_visitor = _TypeGetterVisitor()
+        self.type_getter_visitor = TypeGetterVisitor()
 
         self.stmt_type_info = []  # [(lineno, info)]
 
@@ -30,7 +30,7 @@ class TypeCheckerVisitor(NodeVisitor):
     def print_type_info(self, code: str):
         lines = code.splitlines()
         for lineno, info in self.stmt_type_info:
-            lines[lineno - 1] = f"// {info}\n{lines[lineno - 1]}\n"
+            lines[lineno - 1] = f"// {info}\n{lines[lineno - 1]}"
         with open("typed.rs", "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
 
@@ -172,7 +172,7 @@ class TypeCheckerVisitor(NodeVisitor):
         if not isinstance(forall_type, ForAllType):
             self._error(node, f"For-all type expected, got '{forall_type}'")
 
-        return _TypeSubstitutionVisitor(
+        return TypeSubstitutionVisitor(
             old=NamedType(forall_type.param_name),
             new=type_arg,
         ).visit(forall_type.body)
@@ -220,7 +220,7 @@ class TypeCheckerVisitor(NodeVisitor):
         return record_type
 
 
-class _TypeGetterVisitor(NodeVisitor):
+class TypeGetterVisitor(NodeVisitor):
     def __init__(self):
         super().__init__()
         self.global_var_dict = {}  # name |-> type
@@ -266,7 +266,7 @@ def _new_temp_name(name: str) -> str:
     return f"{name}${_temp_name_idx}"
 
 
-class _TypeSubstitutionVisitor(TransformVisitor):
+class TypeSubstitutionVisitor(TransformVisitor):
     def __init__(self, old: NamedType, new: Type):
         assert isinstance(old, NamedType)
         self.old = old
@@ -284,7 +284,7 @@ class _TypeSubstitutionVisitor(TransformVisitor):
             return ForAllType(node.param_name, self.visit(node.body))
         else:
             temp_name = _new_temp_name(node.param_name)
-            result_body = _TypeSubstitutionVisitor(
+            result_body = TypeSubstitutionVisitor(
                 NamedType(node.param_name), NamedType(temp_name)
             ).visit(node.body)
             result_body = self.visit(result_body)

@@ -1,6 +1,6 @@
 import sys
 from src.parser import parse
-from src.trait import TraitDesugarVisitor
+from src.trait import TraitVisitor
 from src.type_checker import TypeCheckerVisitor
 from src.interpreter import InterpreterVisitor
 
@@ -9,11 +9,15 @@ def error(msg):
     print(f"\033[91mError!\n{msg}\033[0m")
     sys.exit(1)
 
+def print_program(filename, tree):
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(str(tree))
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         error("No file provided")
     debug = "--debug" in sys.argv[1:]
-
 
     code_file = sys.argv[1]
 
@@ -22,8 +26,9 @@ if __name__ == "__main__":
 
         tree = parse(code)
 
-        trait = TraitDesugarVisitor()
+        trait = TraitVisitor()
         tree = trait.visit(tree)
+        print_program("desugar.rs", tree)
 
         type_checker = TypeCheckerVisitor()
         type_checker.visit(tree)
@@ -38,3 +43,5 @@ if __name__ == "__main__":
             raise e
         else:
             error(e)
+
+

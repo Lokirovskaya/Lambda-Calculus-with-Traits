@@ -94,8 +94,10 @@ Type                ::= ForAllType
 ForAllType          ::= "forall" IDENT "." Type
                         | ArrowType
 
-ArrowType           ::= NamedType "->" ArrowType
-                        | NamedType
+ArrowType           ::= AppType "->" ArrowType
+                        | AppType
+
+AppType             ::= AppType NamedType
 
 NamedType           ::= "(" Type ")"
                         | IDENT
@@ -176,6 +178,9 @@ class Program(ASTNode):
             statements.append(Stmt.parse(tokens))
         return Program(statements, lineno=lineno)
 
+    def __str__(self):
+        return "\n".join(str(stmt) for stmt in self.statements)
+
 
 @dataclass
 class Stmt(ASTNode):
@@ -211,7 +216,10 @@ class AssignStmt(Stmt):
         value = Expr.parse(tokens)
         tokens.expect(TokenType.SEMICOLON)
         return AssignStmt(name, value, lineno=lineno)
-    
+
+    def __str__(self):
+        return f"{self.name} = {self.expr};"
+
 
 @dataclass
 class TypeAssignStmt(ASTNode):
@@ -228,6 +236,9 @@ class TypeAssignStmt(ASTNode):
         tokens.expect(TokenType.SEMICOLON)
         return TypeAssignStmt(name, type, lineno=lineno)
 
+    def __str__(self):
+        return f"type {self.name} = {self.type};"
+
 
 @dataclass
 class ExprStmt(Stmt):
@@ -239,6 +250,19 @@ class ExprStmt(Stmt):
         expr = Expr.parse(tokens)
         tokens.expect(TokenType.SEMICOLON)
         return ExprStmt(expr, lineno=lineno)
+
+    def __str__(self):
+        return f"{self.expr};"
+
+
+@dataclass
+class InstanceStmt(Stmt):
+    name: str
+    type_param: Type
+    inst_expr: Expr
+
+    def __str__(self):
+        return f"instance {self.name} ({self.type_param}) = {self.inst_expr};"
 
 
 @dataclass
@@ -293,7 +317,7 @@ class ImplStmt(Stmt):
         tokens.expect(TokenType.IMPL)
         name = tokens.expect(TokenType.IDENT).value
         tokens.expect(TokenType.FOR)
-        type_param = Type.parse(tokens)
+        type_param = NamedType.parse(tokens)
         tokens.expect(TokenType.LBRACE)
         items = []
         while tokens.peek().type != TokenType.RBRACE:
@@ -381,7 +405,7 @@ class LambdaExpr(Expr):
 
 
 @dataclass
-class TypeLambdaExpr(Stmt):
+class TypeLambdaExpr(Expr):
     param_name: str
     body: Expr
     trait_bounds: list[str]
@@ -390,9 +414,9 @@ class TypeLambdaExpr(Stmt):
     @classmethod
     def parse(cls, tokens: TokenStream):
         lineno = tokens.cur_line()
-        if (
-            tokens.peek().type == TokenType.BACKSLASH
-            and tokens.peek_forward(2).type in (TokenType.DOT, TokenType.IMPL)
+        if tokens.peek().type == TokenType.BACKSLASH and tokens.peek_forward(2).type in (
+            TokenType.DOT,
+            TokenType.IMPL,
         ):
             tokens.expect(TokenType.BACKSLASH)
             param_name = tokens.expect(TokenType.IDENT).value
@@ -412,10 +436,10 @@ class TypeLambdaExpr(Stmt):
 
     def __str__(self):
         if len(self.trait_bounds) == 0:
-            return f"\\@{self.param_name}. {self.body}"
+            return f"\\{self.param_name}. {self.body}"
         else:
             trait_bounds_str = " + ".join(self.trait_bounds)
-            return f"\\@{self.param_name}: {trait_bounds_str}. {self.body}"
+            return f"\\{self.param_name} impl {trait_bounds_str}. {self.body}"
 
 
 @dataclass
@@ -791,11 +815,22 @@ class Type(ASTNode):
     def parse(cls, tokens: TokenStream):
         return ForAllType.parse(tokens)
 
+    def wrap(self, arg: Type) -> str:
+        assert isinstance(arg, Type), f"Expected Type, got {type(arg)}"
+        arg_prec = type(arg).precedence
+        self_prec = type(self).precedence
+        s = str(arg)
+        if arg_prec < self_prec:
+            return f"({s})"
+        else:
+            return str(s)
+
 
 @dataclass
 class ForAllType(Type):
     param_name: str
     body: Type
+    precedence: ClassVar[int] = 0
 
     @classmethod
     def parse(cls, tokens: TokenStream):
@@ -829,11 +864,12 @@ class ForAllType(Type):
 class ArrowType(Type):
     left: Type
     right: Type
+    precedence: ClassVar[int] = 1
 
     @classmethod
     def parse(cls, tokens: TokenStream):
         lineno = tokens.cur_line()
-        left = NamedType.parse(tokens)
+        left = AppType.parse(tokens)
         if tokens.peek().type == TokenType.ARROW:
             tokens.expect(TokenType.ARROW)
             right = ArrowType.parse(tokens)
@@ -842,13 +878,10 @@ class ArrowType(Type):
             return left
 
     def __str__(self):
-        left = str(self.left)
-        right = str(self.right)
-        if isinstance(self.left, (ArrowType, ForAllType)):
-            left = f"({left})"
-        if isinstance(self.right, ForAllType):
-            right = f"({right})"
-        return f"{left} -> {right}"
+        if isinstance(self.left, ArrowType):
+            return f"({self.left}) -> {self.wrap(self.right)}"
+        else:
+            return f"{self.wrap(self.left)} -> {self.wrap(self.right)}"
 
     def __eq__(self, other):
         return (
@@ -859,9 +892,43 @@ class ArrowType(Type):
         return hash((self.left, self.right))
 
 
+_named_type_start = {
+    TokenType.IDENT,
+    TokenType.LPAREN,
+    TokenType.LBRACKET,
+    TokenType.LBRACE,
+}
+
+
+@dataclass
+class AppType(Type):
+    func: Type
+    arg: Type
+    precedence: ClassVar[int] = 2
+
+    @classmethod
+    def parse(cls, tokens: TokenStream):
+        lineno = tokens.cur_line()
+        func = NamedType.parse(tokens)
+        while tokens.peek().type in _named_type_start:
+            arg = NamedType.parse(tokens)
+            func = AppType(func, arg, lineno=lineno)
+        return func
+
+    def __str__(self):
+        return f"{self.wrap(self.func)} {self.wrap(self.arg)}"
+
+    def __eq__(self, other):
+        return isinstance(other, AppType) and self.func == other.func and self.arg == other.arg
+
+    def __hash__(self):
+        return hash((self.func, self.arg))
+
+
 @dataclass
 class NamedType(Type):
     name: str
+    precedence: ClassVar[int] = 3
 
     @classmethod
     def parse(cls, tokens: TokenStream):
@@ -894,6 +961,7 @@ class NamedType(Type):
 @dataclass
 class ListType(Type):
     elem_type: Type
+    precedence: ClassVar[int] = 3
 
     @classmethod
     def parse(cls, tokens: TokenStream):
@@ -916,6 +984,7 @@ class ListType(Type):
 @dataclass
 class RecordType(Type):
     fields: dict[str, Type]
+    precedence: ClassVar[int] = 3
 
     @classmethod
     def parse(cls, tokens: TokenStream):
