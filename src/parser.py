@@ -38,8 +38,10 @@ Expr                ::= LambdaExpr
 LambdaExpr          ::= "\\" IDENT ":" Type "." Expr
                         | TypeLambdaExpr
 
-TypeLambdaExpr      ::= "\\" "@" IDENT "." Expr
+TypeLambdaExpr      ::= "\\" IDENT ("impl" TypeBound)? "." Expr
                         | IfExpr
+
+TypeBound           ::= IDENT ("+" IDENT)*
 
 IfExpr              ::= "if" Expr "then" Expr "else" Expr
                         | LogicOrExpr
@@ -359,7 +361,7 @@ class LambdaExpr(Expr):
         lineno = tokens.cur_line()
         if (
             tokens.peek().type == TokenType.BACKSLASH
-            and tokens.peek_forward(1).type == TokenType.IDENT
+            and tokens.peek_forward(2).type == TokenType.COLON
         ):
             tokens.expect(TokenType.BACKSLASH)
             param_name = tokens.expect(TokenType.IDENT).value
@@ -382,6 +384,7 @@ class LambdaExpr(Expr):
 class TypeLambdaExpr(Stmt):
     param_name: str
     body: Expr
+    trait_bounds: list[str]
     precedence: ClassVar[int] = 0
 
     @classmethod
@@ -389,19 +392,30 @@ class TypeLambdaExpr(Stmt):
         lineno = tokens.cur_line()
         if (
             tokens.peek().type == TokenType.BACKSLASH
-            and tokens.peek_forward(1).type == TokenType.AT
+            and tokens.peek_forward(2).type in (TokenType.DOT, TokenType.IMPL)
         ):
             tokens.expect(TokenType.BACKSLASH)
-            tokens.expect(TokenType.AT)
             param_name = tokens.expect(TokenType.IDENT).value
+            trait_bounds = []
+            # has bounds?
+            if tokens.peek().type == TokenType.IMPL:
+                tokens.expect(TokenType.IMPL)
+                while tokens.peek().type != TokenType.DOT:
+                    trait_bounds.append(tokens.expect(TokenType.IDENT).value)
+                    if tokens.peek().type == TokenType.ADD:
+                        tokens.expect(TokenType.ADD)
             tokens.expect(TokenType.DOT)
             body = Expr.parse(tokens)
-            return TypeLambdaExpr(param_name, body, lineno=lineno)
+            return TypeLambdaExpr(param_name, body, trait_bounds, lineno=lineno)
         else:
             return IfExpr.parse(tokens)
 
     def __str__(self):
-        return f"\\@{self.param_name}. {self.body}"
+        if len(self.trait_bounds) == 0:
+            return f"\\@{self.param_name}. {self.body}"
+        else:
+            trait_bounds_str = " + ".join(self.trait_bounds)
+            return f"\\@{self.param_name}: {trait_bounds_str}. {self.body}"
 
 
 @dataclass

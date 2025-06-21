@@ -3,20 +3,21 @@ from typing import NoReturn
 from .parser import *
 from .visitor import TransformVisitor
 
-"""
-trait T a {x: X;}       =>  type T = forall a. {x: X;}
-struct S {x: X;}        =>  type S = {x: X;}
-impl T for S {x = f;}   =>  record_T = {x = f;}
-
-Syntatic de-sugar only, no type checking.
-"""
-
 
 class TraitDesugarVisitor(TransformVisitor):
+    def __init__(self):
+        super().__init__()
+
     def _error(self, node: ASTNode, msg: str) -> NoReturn:
         raise TypeError(f"[Line {node.lineno}] Type Error: {msg}")
 
     def visit_TraitStmt(self, node: TraitStmt):
+        """
+        trait S a = {f1: X, f2: Y}
+        =>
+        f1: \a impl S. X
+        
+        """
         # record body
         record = RecordType({})
         for item in node.items:

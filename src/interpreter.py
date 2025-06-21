@@ -28,7 +28,7 @@ class InterpreterVisitor(NodeVisitor):
     def print_eval_info(self, code: str):
         lines = code.splitlines()
         for lineno, info in self.stmt_eval_info:
-            lines[lineno - 1] = f"// {info}\n{lines[lineno - 1]}"
+            lines[lineno - 1] = f"// {info}\n{lines[lineno - 1]}\n"
         with open("eval.rs", "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
 

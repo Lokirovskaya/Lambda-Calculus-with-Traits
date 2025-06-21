@@ -31,13 +31,13 @@ class TransformVisitor:
     def generic_visit(self, node):
         updated_fields = {}
         for field, value in iter_fields(node):
-            if isinstance(value, list):
+            if isinstance(value, list) and len(value) > 0 and isinstance(value[0], ASTNode):
                 new_list = []
                 for item in value:
                     new_item = self.visit(item)
                     if isinstance(new_item, list):
                         new_list.extend(new_item)
-                    elif new_item is not None:
+                    elif isinstance(new_item, ASTNode):
                         new_list.append(new_item)
                 updated_fields[field] = new_list
             elif isinstance(value, dict):
@@ -49,7 +49,7 @@ class TransformVisitor:
                 updated_fields[field] = new_dict
             elif isinstance(value, ASTNode):
                 new_node = self.visit(value)
-                if new_node is not None and isinstance(new_node, ASTNode):
+                if isinstance(new_node, ASTNode):
                     updated_fields[field] = new_node
             else:
                 updated_fields[field] = value
