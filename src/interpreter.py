@@ -47,8 +47,8 @@ class InterpreterVisitor(NodeVisitor):
 
     def visit_LambdaExpr(self, node: LambdaExpr):
         self.bounded_var_names.append(node.param_name)
-        # Type annotation erasure
-        eval = replace(node, body=self.visit(node.body), param_type=None)
+        # Type annotation erasure + lazy eval
+        eval = replace(node, body=node.body, param_type=None)
         self.bounded_var_names.pop()
         return eval
 

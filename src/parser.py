@@ -122,6 +122,7 @@ def parse(code: str):
 @dataclass(kw_only=True)
 class ASTNode:
     lineno: int = None
+    checked_type: Type = None
 
     def pretty_print(self, indent=0) -> str:
         pad = "  " * indent
@@ -664,7 +665,10 @@ class AppExpr(Expr):
         return func
 
     def __str__(self):
-        return f"{self.wrap(self.func)} {self.wrap(self.arg)}"
+        if isinstance(self.arg, (AppExpr, TypeAppExpr)):
+            return f"{self.wrap(self.func)} ({self.arg})"
+        else:
+            return f"{self.wrap(self.func)} {self.wrap(self.arg)}"
 
 
 @dataclass
@@ -773,6 +777,8 @@ class ValueExpr(Expr):
             return "true"
         elif self.value is False:
             return "false"
+        elif isinstance(self.value, str):
+            return f'"{self.value}"'
         else:
             return str(self.value)
 

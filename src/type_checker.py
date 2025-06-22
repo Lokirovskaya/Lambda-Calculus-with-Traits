@@ -20,7 +20,7 @@ class TypeCheckerVisitor(NodeVisitor):
         self.global_env: Env = Env()  # expr |-> type
         self.cur_env = self.global_env
 
-        self.get_inst_types: dict[str, set[Type]] = {}  # trait_name |-> set of inst_types
+        self.get_inst_types: dict[str, list[Type]] = {}  # trait_name |-> set of inst_types
 
         with open("step3_type_checked.rs", "w", encoding="utf-8"):
             pass
@@ -40,6 +40,11 @@ class TypeCheckerVisitor(NodeVisitor):
 
     ###############################################################
 
+    def visit(self, node: ASTNode):
+        type = super().visit(node)
+        node.checked_type = type
+        return type
+
     def visit_AssignStmt(self, node: AssignStmt):
         stmt_type = self.visit(node.expr)
         self.global_env.set(name=node.name, value=stmt_type)
@@ -54,7 +59,7 @@ class TypeCheckerVisitor(NodeVisitor):
         self._log(node, None)
 
     def visit_InstanceEnvStmt(self, node: InstanceEnvStmt):
-        self.get_inst_types.setdefault(node.name, set()).add(node.type_param)
+        self.get_inst_types.setdefault(node.name, []).append(node.type_param)
         self._log(node, None)
 
     def visit_Expr(self, node: Expr):
@@ -76,7 +81,15 @@ class TypeCheckerVisitor(NodeVisitor):
         self.cur_env = Env(self.cur_env)
         self.cur_env.set(name=node.param_name, value=TypeType)
 
+        if len(node.trait_bounds) > 0:
+            for trait in node.trait_bounds:
+                self.get_inst_types.setdefault(trait, []).append(NamedType(node.param_name))
+
         body_type = self.visit(node.body)
+
+        if len(node.trait_bounds) > 0:
+            for trait in node.trait_bounds:
+                self.get_inst_types[trait].pop()
 
         self.cur_env = old_env
         return ForAllType(node.param_name, body_type, trait_bounds=node.trait_bounds)
@@ -202,7 +215,7 @@ class TypeCheckerVisitor(NodeVisitor):
             if node.type_arg not in inst_types:
                 self._error(
                     node,
-                    f"Type '{node.type_arg}' does not satisfy trait bounds '{" + ".join(forall_type.trait_bounds)}'",
+                    f"Type '{node.type_arg}' does not satisfy trait bounds '{" + ".join(forall_type.trait_bounds)}' required by '{node.func}'",
                 )
 
         return TypeSubstitutionVisitor(
@@ -238,7 +251,8 @@ class TypeCheckerVisitor(NodeVisitor):
 
     def visit_ListExpr(self, node: ListExpr):
         if len(node.elements) == 0:
-            return ListType(None)  # Todo
+            # return ForAllType("a", ListType(NamedType("a")), trait_bounds=[])
+            return ListType(None)
 
         first_type = self.visit(node.elements[0])
         for value in node.elements[1:]:
