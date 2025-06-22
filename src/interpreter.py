@@ -28,9 +28,9 @@ class InterpreterVisitor(NodeVisitor):
     def _log(self, stmt, result):
         with open("step5_eval.rs", "a", encoding="utf-8") as f:
             if result is not None:
-                f.write(f"{stmt}\n// ==> {result}\n\n")
+                f.write(f"{stmt}  // ==> {result}\n")
             else:
-                f.write(f"{stmt}\n\n")
+                f.write(f"{stmt}\n")
 
     ###############################################################
 

@@ -28,9 +28,9 @@ class TypeCheckerVisitor(NodeVisitor):
     def _log(self, stmt, type):
         with open("step3_type_checked.rs", "a", encoding="utf-8") as f:
             if type is not None:
-                f.write(f"{stmt}\n// : {type}\n\n")
+                f.write(f"{stmt} // : {type}\n")
             else:
-                f.write(f"{stmt}\n\n")
+                f.write(f"{stmt}\n")
 
     def _error(self, node: ASTNode, msg: str) -> NoReturn:
         raise TypeError(f"[Line {node.lineno}] Type Error: {msg}")
@@ -159,6 +159,26 @@ class TypeCheckerVisitor(NodeVisitor):
     def visit_AppExpr(self, node: AppExpr):
         func_type = self.visit(node.func)
         arg_type = self.visit(node.arg)
+
+        # try to infer type
+        # id 1         App(id, 1)
+        # =>
+        # id @Int 1    App(TApp(id, Int), 1)
+        if isinstance(func_type, ForAllType):
+            if isinstance(func_type.body, ArrowType):
+                inferred = simple_unify(
+                    src_type=func_type.body.left,
+                    tgt_type=arg_type,
+                    type_param=NamedType(func_type.param_name),
+                )
+                if inferred is not None:
+                    node.func = TypeAppExpr(node.func, inferred, lineno=node.lineno)
+                    return self.visit(node)
+
+            self._error(
+                node, f"Type infer failed for '{func_type}' with argument type '{arg_type}'"
+            )
+
         if not isinstance(func_type, ArrowType):
             self._error(node, f"Arrow type expected, got '{func_type}'")
 
@@ -177,7 +197,10 @@ class TypeCheckerVisitor(NodeVisitor):
             for bound in forall_type.trait_bounds:
                 inst_types.update(self.get_inst_types[bound])
             if node.type_arg not in inst_types:
-                self._error(node, f"Type '{node.type_arg}' does not satisfy trait bounds '{" + ".join(forall_type.trait_bounds)}'")
+                self._error(
+                    node,
+                    f"Type '{node.type_arg}' does not satisfy trait bounds '{" + ".join(forall_type.trait_bounds)}'",
+                )
 
         return TypeSubstitutionVisitor(
             old=NamedType(forall_type.param_name),
@@ -225,3 +248,39 @@ class TypeCheckerVisitor(NodeVisitor):
     def visit_RecordExpr(self, node: RecordExpr):
         record_type = RecordType({label: self.visit(value) for label, value in node.fields.items()})
         return record_type
+
+
+def simple_unify(src_type: Type, type_param: Type, tgt_type: Type) -> Type:
+    assert isinstance(type_param, NamedType)
+
+    # X
+    if isinstance(src_type, NamedType) and src_type == type_param:
+        return tgt_type
+
+    # X -> X
+    if isinstance(src_type, ArrowType) and isinstance(tgt_type, ArrowType):
+        left_unified = simple_unify(src_type.left, type_param, tgt_type.left)
+        right_unified = simple_unify(src_type.right, type_param, tgt_type.right)
+        if left_unified is not None and right_unified is not None and left_unified == right_unified:
+            return left_unified
+
+    # [X]
+    if isinstance(src_type, ListType) and isinstance(tgt_type, ListType):
+        return simple_unify(src_type.elem_type, type_param, tgt_type.elem_type)
+
+    # Record
+    if isinstance(src_type, RecordType) and isinstance(tgt_type, RecordType):
+        if src_type.fields.keys() != tgt_type.fields.keys():
+            return None
+        last_unified = None
+        for label, src_field_type in src_type.fields.items():
+            tgt_field_type = tgt_type.fields[label]
+            unified = simple_unify(src_field_type, type_param, tgt_field_type)
+            if unified is None:
+                return None
+            if last_unified is not None and last_unified != unified:
+                return None
+            last_unified = unified
+        return last_unified
+
+    return None

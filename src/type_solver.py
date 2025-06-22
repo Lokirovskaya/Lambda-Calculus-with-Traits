@@ -18,14 +18,14 @@ class TypeSolverVisitor(TransformVisitor):
     def visit_TypeAssignStmt(self, node: TypeAssignStmt):
         self.global_var_dict[node.name] = self.visit(node.type)
         return None
-    
+
     def visit_LambdaExpr(self, node: LambdaExpr):
         self.bounded_var_names.append(node.param_name)
         param_type = self.visit(node.param_type)
         body = self.visit(node.body)
         self.bounded_var_names.pop()
         return replace(node, param_type=param_type, body=body)
-    
+
     def visit_TypeLambdaExpr(self, node: TypeLambdaExpr):
         self.bounded_var_names.append(node.param_name)
         body = self.visit(node.body)
@@ -95,14 +95,14 @@ class TypeSubstitutionVisitor(TransformVisitor):
         if node.param_name == self.old.name:
             return node
         elif node.param_name not in _FreeVarVisitor().visit(self.new):
-            return ForAllType(node.param_name, self.visit(node.body), lineno=node.lineno)
+            return replace(node, body=self.visit(node.body))
         else:
             temp_name = _new_temp_name(node.param_name)
             result_body = TypeSubstitutionVisitor(
                 NamedType(node.param_name), NamedType(temp_name)
             ).visit(node.body)
             result_body = self.visit(result_body)
-            return ForAllType(temp_name, result_body, lineno=node.lineno)
+            return replace(node, param_name=temp_name, body=result_body)
 
     def visit_NamedType(self, node: NamedType):
         if node.name == self.old.name:
