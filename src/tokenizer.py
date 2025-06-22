@@ -216,6 +216,8 @@ def tokenize(code: str) -> TokenStream:
         else:
             if value in _key_words:
                 token_type = _key_words[value]
+            if token_type == TokenType.STRING:
+                value = value[1:-1]
             tokens.append(Token(token_type, value, line_num, column))
 
     return TokenStream(tokens)

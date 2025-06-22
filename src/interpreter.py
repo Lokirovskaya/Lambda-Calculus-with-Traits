@@ -1,5 +1,5 @@
 from typing import NoReturn
-import dataclasses
+from dataclasses import replace
 
 from .parser import *
 from .visitor import NodeVisitor, TransformVisitor
@@ -19,7 +19,7 @@ class InterpreterVisitor(NodeVisitor):
         self.stmt_eval_info = []  # [(lineno, info)]
         self.cur_lineno = None
 
-        with open("step5_eval.rs", "w", encoding="utf-8") as f:
+        with open("step5_eval.rs", "w", encoding="utf-8"):
             pass
 
     def _error(self, msg: str) -> NoReturn:
@@ -48,7 +48,7 @@ class InterpreterVisitor(NodeVisitor):
     def visit_LambdaExpr(self, node: LambdaExpr):
         self.bounded_var_names.append(node.param_name)
         # Type annotation erasure
-        eval = dataclasses.replace(node, body=self.visit(node.body), param_type=None)
+        eval = replace(node, body=self.visit(node.body), param_type=None)
         self.bounded_var_names.pop()
         return eval
 
@@ -63,7 +63,7 @@ class InterpreterVisitor(NodeVisitor):
         elif _is_false(cond_eval):
             return self.visit(node.else_expr)
 
-        return dataclasses.replace(
+        return replace(
             node,
             condition=cond_eval,
             then_expr=self.visit(node.then_expr),
@@ -82,7 +82,7 @@ class InterpreterVisitor(NodeVisitor):
         if _is_false(left_eval) and _is_false(right_eval):
             return left_eval
 
-        return dataclasses.replace(
+        return replace(
             node,
             left=left_eval,
             right=right_eval,
@@ -100,7 +100,7 @@ class InterpreterVisitor(NodeVisitor):
         if _is_true(left_eval) and _is_true(right_eval):
             return left_eval
 
-        return dataclasses.replace(
+        return replace(
             node,
             left=left_eval,
             right=right_eval,
@@ -113,7 +113,7 @@ class InterpreterVisitor(NodeVisitor):
         elif _is_false(eval):
             return _to_value(node, True)
 
-        return dataclasses.replace(node, expr=eval)
+        return replace(node, expr=eval)
 
     def visit_RelExpr(self, node: RelExpr):
         left_eval = self.visit(node.left)
@@ -134,7 +134,7 @@ class InterpreterVisitor(NodeVisitor):
             else:
                 self._error(node, f"Unknown operator for RelExpr: {node.op}")
 
-        return dataclasses.replace(
+        return replace(
             node,
             left=left_eval,
             right=right_eval,
@@ -151,7 +151,7 @@ class InterpreterVisitor(NodeVisitor):
             else:
                 self._error(node, f"Unknown operator for AddExpr: {node.op}")
 
-        return dataclasses.replace(
+        return replace(
             node,
             left=left_eval,
             right=right_eval,
@@ -164,13 +164,17 @@ class InterpreterVisitor(NodeVisitor):
             if node.op == "*":
                 return _to_value(node, left_eval.value * right_eval.value)
             elif node.op == "/":
+                if right_eval.value == 0:
+                    self._error(node, "Division by zero")
                 return _to_value(node, left_eval.value // right_eval.value)
             elif node.op == "%":
+                if right_eval.value == 0:
+                    self._error(node, "Division by zero")
                 return _to_value(node, left_eval.value % right_eval.value)
             else:
                 self._error(node, f"Unknown operator for MulExpr: {node.op}")
 
-        return dataclasses.replace(
+        return replace(
             node,
             left=left_eval,
             right=right_eval,
@@ -180,7 +184,7 @@ class InterpreterVisitor(NodeVisitor):
         eval = self.visit(node.expr)
         if _is_val(eval):
             return _to_value(node, -eval.value)
-        return dataclasses.replace(node, expr=eval)
+        return replace(node, expr=eval)
 
     def visit_AppExpr(self, node: AppExpr):
         func_eval = self.visit(node.func)
@@ -191,7 +195,25 @@ class InterpreterVisitor(NodeVisitor):
             ).visit(func_eval.body)
             return self.visit(subst)
 
-        return dataclasses.replace(
+        if isinstance(func_eval, NamedExpr) and func_eval.is_builtin:
+            if func_eval.name == "print":
+                print(arg_eval.value, end="")
+                return arg_eval
+            elif func_eval.name == "println":
+                print(arg_eval.value)
+                return arg_eval
+            elif func_eval.name == "string_to_int":
+                return replace(arg_eval, value=int(arg_eval.value))
+            elif func_eval.name == "int_to_string":
+                return replace(arg_eval, value=str(arg_eval.value))
+            elif func_eval.name == "head":
+                if len(arg_eval.elements) == 0:
+                    self._error("Calling 'head' on empty list")
+                return arg_eval.elements[0]
+            elif func_eval.name == "tail":
+                return replace(arg_eval, elements=arg_eval.elements[1:])
+
+        return replace(
             node,
             func=func_eval,
             arg=arg_eval,
@@ -210,28 +232,33 @@ class InterpreterVisitor(NodeVisitor):
         if isinstance(record_eval, RecordExpr):
             return self.visit(record_eval.fields[node.field_name])
 
-        return dataclasses.replace(node, record=record_eval)
+        return replace(node, record=record_eval)
 
     def visit_NamedExpr(self, node: NamedExpr):
         if node.name in self.bounded_var_names:
             return node
-        else:
-            assert (
-                node.name in self.global_var_dict
-            ), f"Line {self.cur_lineno}: Var '{node.name}' not found"  # Ensured by type checker
+        elif node.name in self.global_var_dict:
             return self.global_var_dict[node.name]
+        elif node.is_builtin:
+            if node.name == "read":
+                return ValueExpr(value=input())
+            else:
+                return node
+
+        # Should not happened, ensured by type checker
+        self._error(f"Var '{node.name}' not found")
 
     def visit_ValueExpr(self, node: ValueExpr):
         return node
 
     def visit_ListExpr(self, node: ListExpr):
-        return dataclasses.replace(
+        return replace(
             node,
             elements=[self.visit(e) for e in node.elements],
         )
 
     def visit_RecordExpr(self, node: RecordExpr):
-        return dataclasses.replace(
+        return replace(
             node,
             fields={l: self.visit(v) for l, v in node.fields.items()},
         )

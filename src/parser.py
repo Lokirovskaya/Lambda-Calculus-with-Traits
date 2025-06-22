@@ -1,7 +1,8 @@
 from __future__ import annotations
 from dataclasses import dataclass, fields, is_dataclass
-from .tokenizer import tokenize, TokenType, TokenStream
 from typing import ClassVar
+
+from .tokenizer import tokenize, TokenType, TokenStream
 
 
 """
@@ -720,14 +721,18 @@ class FieldAccessExpr(Expr):
 @dataclass
 class NamedExpr(Expr):
     name: str
+    is_builtin: bool = False
     precedence: ClassVar[int] = 11
 
     @classmethod
     def parse(cls, tokens: TokenStream):
         lineno = tokens.cur_line()
         if tokens.peek().type == TokenType.IDENT:
-            value = tokens.expect(TokenType.IDENT).value
-            return NamedExpr(value, lineno=lineno)
+            name = tokens.expect(TokenType.IDENT).value
+            from .builtin import built_in_funcs
+
+            is_builtin = name in built_in_funcs
+            return NamedExpr(name, lineno=lineno, is_builtin=is_builtin)
 
         elif tokens.peek().type == TokenType.NUMBER:
             value = int(tokens.expect(TokenType.NUMBER).value)

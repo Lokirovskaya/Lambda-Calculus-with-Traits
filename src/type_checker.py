@@ -3,7 +3,7 @@ from typing import NoReturn
 from .parser import *
 from .visitor import NodeVisitor
 from .env import Env
-from .builtin import BoolType, IntType, StringType, TypeType
+from .builtin import BoolType, IntType, StringType, TypeType, built_in_funcs
 from .type_solver import TypeSubstitutionVisitor
 
 
@@ -22,8 +22,11 @@ class TypeCheckerVisitor(NodeVisitor):
 
         self.get_inst_types: dict[str, set[Type]] = {}  # trait_name |-> set of inst_types
 
-        with open("step3_type_checked.rs", "w", encoding="utf-8") as f:
+        with open("step3_type_checked.rs", "w", encoding="utf-8"):
             pass
+
+        for func, (type, _) in built_in_funcs.items():
+            self.global_env.set(name=func, value=type)
 
     def _log(self, stmt, type):
         with open("step3_type_checked.rs", "a", encoding="utf-8") as f:
