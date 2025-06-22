@@ -150,6 +150,8 @@ class InterpreterVisitor(NodeVisitor):
                 return _to_value(node, left_eval.value - right_eval.value)
             else:
                 self._error(node, f"Unknown operator for AddExpr: {node.op}")
+        if isinstance(left_eval, ListExpr) and isinstance(right_eval, ListExpr):
+            return ListExpr(elements=left_eval.elements + right_eval.elements, lineno=node.lineno)
 
         return replace(
             node,
@@ -242,6 +244,20 @@ class InterpreterVisitor(NodeVisitor):
         elif node.is_builtin:
             if node.name == "read":
                 return ValueExpr(value=input())
+            elif node.name == "cons":
+                return LambdaExpr(
+                    "__x",
+                    None,
+                    LambdaExpr(
+                        "__xs",
+                        None,
+                        AddExpr(
+                            ListExpr([NamedExpr("__x")]),
+                            "+",
+                            NamedExpr("__xs"),
+                        ),
+                    ),
+                )
             else:
                 return node
 

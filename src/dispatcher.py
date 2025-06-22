@@ -67,7 +67,7 @@ class DispatcherVisitor(TransformVisitor):
             lambda_param_type = NamedType(node.param_name)
 
             body = node.body
-            for trait in node.trait_bounds:
+            for trait in reversed(node.trait_bounds):
                 dict_param = NamedExpr(self.temp_name(f"__dictp_{trait}"))
                 self.get_inst[(trait, lambda_param_type)] = dict_param
                 body = LambdaExpr(param_name=dict_param.name, param_type=TypeType, body=body)

@@ -143,9 +143,17 @@ class TypeCheckerVisitor(NodeVisitor):
     def visit_AddExpr(self, node: AddExpr):
         left_type = self.visit(node.left)
         right_type = self.visit(node.right)
-        if left_type != IntType or right_type != IntType:
-            self._error(node, f"Expected 'Int', got '{left_type}' and '{right_type}'")
-        return IntType
+        if node.op == "+":
+            if left_type != right_type:
+                self._error(node, f"Expected '{left_type}', got '{right_type}'")
+            if left_type in (IntType, StringType) or isinstance(left_type, ListType):
+                return left_type
+            else:
+                self._error(node, f"Expected 'Int' or 'String' or List, got '{left_type}'")
+        else:
+            if left_type != IntType or right_type != IntType:
+                self._error(node, f"Expected 'Int', got '{left_type}' and '{right_type}'")
+            return IntType
 
     def visit_MulExpr(self, node: MulExpr):
         left_type = self.visit(node.left)

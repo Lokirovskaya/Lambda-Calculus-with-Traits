@@ -44,4 +44,15 @@ built_in_funcs = {
         ),
         NamedExpr("tail", is_builtin=True),
     ),
+    # forall a. a -> [a] -> [a]
+    "cons": (
+        ForAllType(
+            "a",
+            ArrowType(
+                NamedType("a"), ArrowType(ListType(NamedType("a")), ListType(NamedType("a")))
+            ),
+            trait_bounds=[],
+        ),
+        NamedExpr("cons", is_builtin=True),
+    ),
 }

@@ -65,7 +65,7 @@ class TypeSolverVisitor(TransformVisitor):
             raise TypeError(f"[Line {node.lineno}] Unknown type '{node.name}'")
 
     def visit_ListType(self, node: ListType):
-        return ListType(self.visit(node.element_type))
+        return ListType(self.visit(node.elem_type))
 
     def visit_RecordType(self, node: RecordType):
         return RecordType({label: self.visit(type) for label, type in node.fields.items()})
