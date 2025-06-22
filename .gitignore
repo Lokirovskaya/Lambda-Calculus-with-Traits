@@ -1,4 +1,6 @@
 *.txt
 *.ast
 *.rs
+*.pdf
+*.zip
 __pycache__/
